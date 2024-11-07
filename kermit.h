@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <stdlib.h>
 
 #define MARCADOR_INICIO 0x7E
 
@@ -16,28 +17,39 @@
 #define ERRO        0X3F
 
 typedef struct krm_pack {
-    unsigned char tamanho[6];
-    unsigned char sequencia[5];
-    unsigned char tipo[5];
-    unsigned char crc[8];
-    unsigned char *dados;
+    unsigned char tamanho;
+    unsigned char sequencia;
+    unsigned char tipo;
+    unsigned char crc;
+    unsigned char dados[100];
+    unsigned char *ptr_dados;
 } kermit_packet;
 
 /// @brief Aloca e inicializa os valores do pacote
 /// @param packet
 /// @return Retorna 1 se o pacote foi inicializado corretamente, 0 caso contrário 
-int inicializa_pacote(kermit_packet * packet, char tipo, int sequencia);
+kermit_packet * inicializa_pacote(char tipo, char sequencia);
 
 /// @brief Insere os dados no pacote e define o valor do tamanho da estrutura
 /// @param packet 
-void insere_dados_pacote(kermit_packet * packet);
+void insere_dados_pacote(kermit_packet * packet, char * dados, int tamanho);
 
-/// @brief "Converte" o pacote para um formato pronto para ser enviado para a rede
-/// @param packet 
-/// @return Ponteiro de bytes contendo os dados prontos para serem enviados para a rede 
-char * converte_pacote_para_bytes(kermit_packet * packet);
+/// @brief Pega o conjunto de dados e transforma na estrutura kermit_packet
+/// @param dados 
+/// @return Estrutura kermit_packet composta das informações em dados
+kermit_packet * converte_bytes_para_pacote(char * dados);
 
 /// @brief Desaloca o pacote
 /// @param packet 
 /// @return Retorna 1 se o pacote foi destruído corretamente, 0 caso contrário 
-int destroi_pacote(kermit_packet * packet);
+kermit_packet * destroi_pacote(kermit_packet * packet);
+
+int get_tipo_pacote(kermit_packet * packet);
+
+/// @brief 
+/// @param packet 
+/// @param receiver Armazena os dados do pacote no ponteiro indicado
+/// @return Sequência do pacote
+char * get_dados_pacote(kermit_packet * packet);
+
+//TODO: Definir o CRC porque eu ainda não entendi pra que isso serve
