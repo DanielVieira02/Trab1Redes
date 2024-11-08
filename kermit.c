@@ -10,8 +10,10 @@ kermit_packet * inicializa_pacote(char tipo, char sequencia) {
     packet->tipo = tipo;
     packet->sequencia = sequencia;
     packet->tamanho = 0;
-
+    packet->crc = 'D';
     packet->ptr_dados = packet->dados;
+
+    memset(packet->dados, '\0', 64);
     
     return packet;
 }
@@ -55,11 +57,9 @@ char * converte_pacote_para_bytes(kermit_packet * packet) {
     dados[2] = packet->sequencia;
     dados[3] = packet->tipo;
 
-    for (int index = 0; index < tamanho; index++) {
+    for (int index = 0; index < tamanho + 1; index++) {
         dados[4 + index] = packet->dados[index];
     }
-
-    dados[5 + tamanho] = packet->crc;
 
     return dados;
 }
@@ -92,9 +92,9 @@ void print_pacote(kermit_packet * packet) {
 }
 
 int envia_pacote(kermit_packet * packet, int socket) {
-    char * dados = converte_pacote_para_bytes(packet);
+    unsigned char * dados = converte_pacote_para_bytes(packet);
 
-    if (send(socket, dados, strlen(dados) + 1, 0) == -1) {
+    if (send(socket, (char*)dados, 100, 0) == -1) {
         fprintf(stderr, "Erro ao enviar mensagem\n");
         return -1;
     }

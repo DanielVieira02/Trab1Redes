@@ -37,7 +37,7 @@ typedef struct krm_pack {
     unsigned char sequencia;
     unsigned char tipo;
     unsigned char crc;
-    unsigned char dados[63];
+    unsigned char dados[64];
     unsigned char *ptr_dados;
 } kermit_packet;
 
