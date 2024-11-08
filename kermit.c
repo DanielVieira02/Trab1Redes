@@ -16,24 +16,52 @@ kermit_packet * inicializa_pacote(char tipo, char sequencia) {
     return packet;
 }
 
-void insere_dados_pacote(kermit_packet * packet, char * dados, int tamanho) {
-    for (int index = 0; index < tamanho; index++) {
+int insere_dados_pacote(kermit_packet * packet, char * dados, int tamanho) {
+    for (int index = 0; index < tamanho && packet->tamanho < 63; index++) {
         *packet->ptr_dados = dados[index];
         packet->ptr_dados++;
+        packet->tamanho++;
     }
 
-    packet->tamanho += (unsigned char)tamanho;
+    return packet->tamanho < 63;
 }
 
-
-// TODO: Método não está pronto
 kermit_packet * converte_bytes_para_pacote(char * dados) {
-    int tamanho = (int)dados[1];
+    if (dados[0] != MARCADOR_INICIO) {
+        printf("Marcador de Início está incorreto. Pacote foi recebido incorretamente\n");
+        return NULL;
+    }
+
+    int tamanho = dados[1];
     kermit_packet * packet;
 
     packet = inicializa_pacote(dados[3], dados[2]);
 
+    for (int index = 0; index < tamanho; index++) {
+        insere_dados_pacote(packet, &dados[4 + index], 1);
+    }
+
+    packet->crc = dados[5 + tamanho];
+
     return packet;
+}
+
+char * converte_pacote_para_bytes(kermit_packet * packet) {
+    unsigned char tamanho = packet->tamanho;
+    char * dados = malloc(sizeof(char) * (tamanho + 5));
+
+    dados[0] = MARCADOR_INICIO;
+    dados[1] = tamanho;
+    dados[2] = packet->sequencia;
+    dados[3] = packet->tipo;
+
+    for (int index = 0; index < tamanho; index++) {
+        dados[4 + index] = packet->dados[index];
+    }
+
+    dados[5 + tamanho] = packet->crc;
+
+    return dados;
 }
 
 kermit_packet * destroi_pacote(kermit_packet * packet) {
@@ -45,10 +73,9 @@ int get_tipo_pacote(kermit_packet * packet) {
     return (int)packet->tamanho;
 }
 
-char * get_dados_pacote(kermit_packet * packet) {
+unsigned char * get_dados_pacote(kermit_packet * packet) {
     return packet->dados;
 }
-
 
 void print_pacote(kermit_packet * packet) {
     printf("Tamanho: %d\n", packet->tamanho);
@@ -57,42 +84,21 @@ void print_pacote(kermit_packet * packet) {
     
     printf("Dados: \n");
     for (int index = 0; index < (int)packet->tamanho; index++) {
-        printf("%d\n", packet->dados[index]);
+        printf("%c", packet->dados[index]);
     }
+    printf("\n");
 
     printf("CRC: %d\n", packet->crc);
 }
 
-int main() {
-    kermit_packet * packet = inicializa_pacote(OK, 1);
-    print_pacote(packet);
+int envia_pacote(kermit_packet * packet, int socket) {
+    char * dados = converte_pacote_para_bytes(packet);
 
-    unsigned char * dados = malloc(sizeof(unsigned char) * 3);
-    unsigned char * pacote = malloc(sizeof(unsigned char));
-
-    *dados = 0x01;
-    *(dados + 1) = 0x09;
-    *(dados + 2) = 0X0F;
-
-    for (int index = 0; index < 3; index++) {
-        insere_dados_pacote(packet, dados, 3);
+    if (send(socket, dados, strlen(dados) + 1, 0) == -1) {
+        fprintf(stderr, "Erro ao enviar mensagem\n");
+        return -1;
     }
-
-    printf("===================================\n");
-
-    printf("Pacote bruto: \n");
-
-    pacote = get_dados_pacote(packet);
-    for (int index = 0; index < packet->tamanho; index++) {
-        printf("%d ", pacote[index]);
-    }
-
-    printf("\n===================================\n");
-    print_pacote(packet);
 
     free(dados);
-
-    destroi_pacote(packet);
-
     return 0;
 }

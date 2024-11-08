@@ -1,31 +1,25 @@
 CC = gcc
-CFLAGS = -Wall -g
-LIBS = ConexaoRawSocket
+CCFLAGS = -lm -Wall -g -std=c99     #Flags de compilação
+SOURCES = $(wildcard *.c)       #Arquivos .c
+OBJECTS = $(SOURCES: .c=.o)     #Arquivos .o
+TARGET  = main                  #Executavel
 
-# Alvo all compila ambos os executáveis: client e server
-all: client server
+#Regra default (primeira regra)
+all: $(TARGET)
 
-# Compilação do cliente
-client: client.o $(LIBS).o
-	$(CC) $(CFLAGS) client.o $(LIBS).o -o client
+$(TARGET): $(OBJECTS)
+	$(CC) $(CCFLAGS) -o $@ $^
 
-# Compilação do servidor
-server: server.o $(LIBS).o
-	$(CC) $(CFLAGS) server.o $(LIBS).o -o server
+%.o: %.c %.h
+	$(CC) $(CCFLAGS) -c $<
 
-# Compilar a biblioteca ConexaoRawSocket
-$(LIBS).o: $(LIBS).c $(LIBS).h
-	$(CC) $(CFLAGS) -c $(LIBS).c
+%.o: %.c
+	$(CC) $(CCFLAGS) -c $<
 
-# Compilação do arquivo objeto para o cliente
-client.o: client.c $(LIBS).h
-	$(CC) $(CFLAGS) -c client.c
-
-# Compilação do arquivo objeto para o servidor
-server.o: server.c $(LIBS).h
-	$(CC) $(CFLAGS) -c server.c
-
-# Limpar os arquivos gerados
+#Remove arquivos temporarios
 clean:
-	rm -f *.o client server
+	rm -f *~ *.o
 
+#Remove o que não for o codigo fonte original
+purge:
+	rm $(TARGET)

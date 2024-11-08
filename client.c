@@ -1,36 +1,96 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>  // Para a função strlen()
-#include "ConexaoRawSocket.h"
 #include <sys/types.h>
 #include <sys/socket.h>
 
-int main(int argc, char * argv[]) {
-    int socket;
-    char *buffer = malloc(100);
+#include "ConexaoRawSocket.h"
+#include "kermit.h"
 
-    socket = ConexaoRawSocket("eno1");
+int envia_arquivo(char * nome_arquivo, int socket) {
+    printf("Enviando arquivo...\n");
 
-    while(1){
-        // Usando fgets para ler uma linha completa
-        if (fgets(buffer, 100, stdin) == NULL) {
-            // Se a leitura falhar, sair do loop
+    FILE * arquivo = fopen(nome_arquivo, "rb");
+    if(arquivo == NULL) {
+        printf("Erro ao ler arquivo. Encerrando execução\n");
+        return -1;
+    }
+
+    char *buffer;
+    if(!(buffer = malloc(sizeof(char) * 255))) {
+        return -1;
+    }
+
+    size_t bytesLidos;
+    kermit_packet * pacote;
+    unsigned char sequencia = 0;
+
+    while((bytesLidos = fread(buffer, 1, sizeof(unsigned char) * 63, arquivo)) > 0) {
+        pacote = inicializa_pacote(OK, sequencia);
+        insere_dados_pacote(pacote, buffer, bytesLidos);
+        envia_pacote(pacote, socket);
+        pacote = destroi_pacote(pacote);
+        sequencia++;
+    }
+
+    fclose(arquivo);
+
+    return 0;
+}
+
+int ler_entrada(char * buffer) {
+    if (fgets(buffer, 255, stdin) == NULL) {
+        return -1;
+    }
+    buffer[strcspn(buffer, "\n")] = 0;
+    return 0;
+}
+
+int client() {
+    int socket = ConexaoRawSocket("eno1");
+    char *buffer;
+    if(!(buffer = malloc(sizeof(char) * 255))) {
+        return -1;
+    }
+
+    int comando;
+    int executar = 1;
+
+    while(executar) {
+        system("clear");
+        printf("Escolha o comando \n");
+        printf("[1] Backup  [2] Restaura    [3] Verifica \n");
+        printf("[0] Sair\n");
+        if (ler_entrada(buffer) == -1) {
             fprintf(stderr, "Erro ao ler a linha\n");
             break;
         }
-
-        // Remove o caractere de nova linha '\n' se ele existir
-        buffer[strcspn(buffer, "\n")] = 0;
-
-        printf("A mensagem digitada foi: %s\n", buffer);
-
-        if (send(socket, buffer, strlen(buffer) + 1, 0) == -1) {
-            fprintf(stderr, "Erro ao enviar mensagem\n");
+        
+        comando = atoi(buffer);
+        
+        switch(comando) {
+            case 1:
+                printf("Insira o nome do arquivo: \n");
+                ler_entrada(buffer);
+                if(envia_arquivo(buffer, socket) == -1) {
+                    break;
+                }
+                ler_entrada(buffer);
+                break;
+            case 2:
+                printf("Restaura TODO, mano\n");
+                break;
+            case 3:
+                printf("Restaura TODO, mano\n");
+                break;
+            default:
+                executar = 0;
+                break;
         }
+        
     }
 
-    free(buffer);  // Não se esqueça de liberar a memória alocada
-
+    free(buffer);
     return 0;
 }
 

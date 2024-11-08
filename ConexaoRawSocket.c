@@ -1,5 +1,4 @@
 #include "ConexaoRawSocket.h"
-#include <arpa/inet.h>
 
 
 int ConexaoRawSocket(char *device)
