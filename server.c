@@ -6,16 +6,18 @@ void server_routine() {
     char * buffer = (char *)malloc(100);
 
     int buffer_length;
-    kermit_packet * packet;
+    kermit_packet * packet = NULL;
 
     while(1) {
-    	buffer_length = recv(socket, (char*) buffer, sizeof(buffer), 0);
-	    if (buffer_length == -1) {
-	        printf("Erro ao receber pacote.\n");	   
-	    }
-	    packet = converte_bytes_para_pacote(buffer);
-        print_pacote(packet);
+    	buffer_length = recv(socket, (char*) buffer, 68, 0);
+	if (buffer_length == -1) {
+	    printf("Erro ao receber pacote.\n");	   
+	}
     }
+	packet = converte_bytes_para_pacote(buffer);
+
+	if (packet != NULL)
+		print_pacote(packet);
 
     free(buffer);
 }
