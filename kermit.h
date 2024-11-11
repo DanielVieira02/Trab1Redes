@@ -65,7 +65,9 @@ int get_tipo_pacote(kermit_packet * packet);
 
 void print_pacote(kermit_packet * packet);
 
-int envia_pacote(kermit_packet * packet, int socket);
+kermit_packet * envia_pacote(kermit_packet * packet, int socket);
+
+kermit_packet * recebe_pacote(int socket);
 
 /// @brief 
 /// @param packet 

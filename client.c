@@ -10,28 +10,70 @@
 int envia_arquivo(char * nome_arquivo, int socket) {
     printf("Enviando arquivo...\n");
 
+    char *buffer;
+    if(!(buffer = malloc(sizeof(char) * 255))) {
+        return -1;
+    }
+
     FILE * arquivo = fopen(nome_arquivo, "rb");
     if(arquivo == NULL) {
         printf("Erro ao ler arquivo. Encerrando execução\n");
         return -1;
     }
 
-    char *buffer;
-    if(!(buffer = malloc(sizeof(char) * 255))) {
-        return -1;
-    }
-
-    size_t bytesLidos;
-    kermit_packet * pacote;
+    kermit_packet * pacote, * resposta;
     unsigned char sequencia = 0;
 
-    while((bytesLidos = fread(buffer, 1, sizeof(unsigned char) * 63, arquivo)) > 0) {
-        pacote = inicializa_pacote(OK, sequencia);
+    pacote = inicializa_pacote(BACKUP, sequencia);
+    insere_dados_pacote(pacote, nome_arquivo, strlen(nome_arquivo));
+    while(resposta == NULL) {
+        resposta = recebe_pacote(socket);
+        switch (get_tipo_pacote(resposta)) {
+            case OK:
+                break;
+            case ERRO:
+                printf("Erro de acesso\n");
+                return -1;
+            default:
+                break;
+        }
+    }
+    pacote = destroi_pacote(pacote);
+    resposta = NULL;
+
+    fseek(arquivo, 0, SEEK_END);
+
+    pacote = inicializa_pacote(TAMANHO, ++sequencia);
+    insere_dados_pacote(pacote, (char)ftell(arquivo), 63);
+    while(resposta == NULL) {
+        resposta = recebe_pacote(socket);
+        switch (get_tipo_pacote(resposta)) {
+            case OK:
+                break;
+            case ERRO:
+                printf("Tamanho insuficiente\n");
+                fclose(arquivo);
+                return -1;
+            default:
+                break;
+        }
+    }
+    pacote = destroi_pacote(pacote);
+    resposta = NULL;
+
+    size_t bytesLidos;
+
+    while((bytesLidos = fread(buffer, 1, 63, arquivo)) > 0) {
+        pacote = inicializa_pacote(DADOS, ++sequencia);
+        resposta = NULL;
         insere_dados_pacote(pacote, buffer, bytesLidos);
         envia_pacote(pacote, socket);
         pacote = destroi_pacote(pacote);
-        sequencia++;
     }
+
+    pacote = inicializa_pacote(FIM_DADOS, ++sequencia);
+    envia_pacote(pacote, socket);
+    pacote = destroi_pacote(pacote);
 
     fclose(arquivo);
 
@@ -78,10 +120,10 @@ int client() {
                 ler_entrada(buffer);
                 break;
             case 2:
-                printf("Restaura TODO, mano\n");
+                printf("TODO Restaura, mano\n");
                 break;
             case 3:
-                printf("Restaura TODO, mano\n");
+                printf("TODO Verifica, mano\n");
                 break;
             default:
                 executar = 0;
