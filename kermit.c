@@ -129,3 +129,27 @@ kermit_packet * envia_pacote(kermit_packet * packet, int socket) {
     free(dados);
     return resposta;
 }
+
+unsigned char crc(kermit_packet *packet) {
+    unsigned char gerador = 0x87; // Gerador polinomial
+    unsigned char crc = 0x00;     // Valor inicial do CRC
+    unsigned char data[packet->tamanho + 3];
+
+    // Preparando os dados para o cálculo do CRC
+    data[0] = packet->sequencia;
+    data[1] = packet->tipo;
+    data[2] = packet->tamanho;
+    memcpy(&data[3], packet->dados, packet->tamanho);
+
+    // Calculo do CRC-8
+    for (int i = 0; i < packet->tamanho + 3; i++) {
+        crc ^= data[i]; // XOR byte a byte
+        for (int j = 0; j < 8; j++) { // Processa cada bit
+            if (crc & 0x80) crc = (crc << 1) ^ gerador; // Shift e XOR com o gerador
+            else crc <<= 1; // Apenas shift se não houver bit mais significativo
+        }
+    }
+
+    return crc;
+}
+

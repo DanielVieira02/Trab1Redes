@@ -74,5 +74,6 @@ kermit_packet * recebe_pacote(int socket);
 unsigned char * get_dados_pacote(kermit_packet * packet);
 
 //TODO: Definir o CRC porque eu ainda não entendi pra que isso serve
+unsigned char crc(kermit_packet * packet);
 
 #endif
