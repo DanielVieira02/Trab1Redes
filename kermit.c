@@ -115,7 +115,7 @@ kermit_packet * recebe_pacote(int socket) {
 }
 
 kermit_packet * envia_pacote(kermit_packet * packet, int socket) {
-    unsigned char * dados = converte_pacote_para_bytes(packet);
+    char * dados = converte_pacote_para_bytes(packet);
     kermit_packet * resposta = NULL;
 
     while (resposta != NULL) {
@@ -152,4 +152,3 @@ unsigned char crc(kermit_packet *packet) {
 
     return crc;
 }
-

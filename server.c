@@ -1,13 +1,45 @@
 #include "ConexaoRawSocket.h"
 #include "kermit.h"
 
-void salva_dados(kermit_packet * packet, int socket) {
-    /*
-    Enquanto tipo do pacote não for FIM_DADOS
-        Escreve dados no arquivo
-        pacote = recebe_pacote()
-        envia_pacote(ACK)
-    */
+void backup(kermit_packet * packet, int socket) {
+    FILE * arquivo = fopen(get_dados_pacote(packet), "w");
+
+    kermit_packet * pacote = inicializa_pacote(OK, 0);
+    kermit_packet * resposta = envia_pacote(pacote, socket);
+
+    tamanho(resposta, arquivo, socket);
+}
+
+void tamanho(kermit_packet * packet, FILE * arquivo, int socket) {
+    char * tamanho = get_dados_pacote(packet);
+
+    // Analisa o tamanho disponível
+
+    kermit_packet * pacote = inicializa_pacote(OK, 1);
+    kermit_packet * resposta = envia_pacote(pacote, socket);
+
+    dados(resposta, arquivo, socket);
+}
+
+void dados(kermit_packet * packet, FILE * arquivo, int socket) {
+    kermit_packet * resposta = packet;
+    kermit_packet * pacote;
+
+    int sequencia = 2;
+
+    while(get_tipo_pacote(resposta) != FIM_DADOS) {
+        fprintf(arquivo, get_dados_pacote(resposta));
+
+        pacote = inicializa_pacote(ACK, sequencia++);
+        resposta = envia_pacote(pacote, socket);
+        pacote = destroi_pacote(pacote);
+    }
+
+    pacote = inicializa_pacote(ACK, sequencia++);
+    resposta = envia_pacote(pacote, socket);
+    pacote = destroi_pacote(pacote);
+
+    fclose(arquivo);
 }
 
 void trata_pacote(kermit_packet * packet, int socket) {
@@ -17,24 +49,13 @@ void trata_pacote(kermit_packet * packet, int socket) {
             envia_pacote(NACK);
     */
 
-    switch (get_tipo_pacote(packet))
-    {
+    switch (get_tipo_pacote(packet)) {
     case BACKUP:
-        /*  Tem acesso?
-                envia_pacote(OK);
-            Se não:
-                envia_pacote(ERRO);
-         */
+        backup(packet, socket);
         break;
-    case TAMANHO:
-        /*  Tem espaço disponível?
-                envia_pacote(OK);
-            Se não:
-                envia_pacote(ERRO);
-         */
+    case RESTAURA:
         break;
-    case DADOS:
-        salva_dados(packet, socket):
+    case VERIFICA:
         break;
     default:
         break;

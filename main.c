@@ -7,7 +7,7 @@ int main(int argc, char * argv[]) {
     }
 
     int isClient = (atoi(argv[1]) == 1);
-
+    
     if(isClient) {
         client();
     } else {

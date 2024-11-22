@@ -7,77 +7,82 @@
 #include "ConexaoRawSocket.h"
 #include "kermit.h"
 
-int envia_arquivo(char * nome_arquivo, int socket) {
-    printf("Enviando arquivo...\n");
+void tamanho(FILE * arquivo, int socket) {
+    fseek(arquivo, 0, fseek);
 
+    kermit_packet * pacote = inicializa_pacote(TAMANHO, 1);
+    insere_dados_pacote(pacote, (char)ftell(arquivo), 63);
+    kermit_packet * resposta = envia_pacote(pacote);
+    destroi_pacote(pacote);
+
+    if (resposta == NULL) {
+        return;
+    }
+
+    switch (get_tipo_pacote(resposta)) {
+        case OK:
+            dados(arquivo, socket);
+            break;
+        case ERRO:
+            printf("Erro de acesso\n");
+        default:
+            return;
+    }
+}
+
+void dados(FILE * arquivo, int socket) {
     char *buffer;
     if(!(buffer = malloc(sizeof(char) * 255))) {
         return -1;
     }
-
-    FILE * arquivo = fopen(nome_arquivo, "rb");
-    if(arquivo == NULL) {
-        printf("Erro ao ler arquivo. Encerrando execução\n");
-        return -1;
-    }
-
-    kermit_packet * pacote, * resposta;
-    unsigned char sequencia = 0;
-
-    pacote = inicializa_pacote(BACKUP, sequencia);
-    insere_dados_pacote(pacote, nome_arquivo, strlen(nome_arquivo));
-    while(resposta == NULL) {
-        resposta = recebe_pacote(socket);
-        switch (get_tipo_pacote(resposta)) {
-            case OK:
-                break;
-            case ERRO:
-                printf("Erro de acesso\n");
-                return -1;
-            default:
-                break;
-        }
-    }
-    pacote = destroi_pacote(pacote);
-    resposta = NULL;
-
-    fseek(arquivo, 0, SEEK_END);
-
-    pacote = inicializa_pacote(TAMANHO, ++sequencia);
-    insere_dados_pacote(pacote, (char)ftell(arquivo), 63);
-    while(resposta == NULL) {
-        resposta = recebe_pacote(socket);
-        switch (get_tipo_pacote(resposta)) {
-            case OK:
-                break;
-            case ERRO:
-                printf("Tamanho insuficiente\n");
-                fclose(arquivo);
-                return -1;
-            default:
-                break;
-        }
-    }
-    pacote = destroi_pacote(pacote);
-    resposta = NULL;
-
+    int sequencia = 2;
+    kermit_packet * pacote;
+    
     size_t bytesLidos;
 
     while((bytesLidos = fread(buffer, 1, 63, arquivo)) > 0) {
         pacote = inicializa_pacote(DADOS, ++sequencia);
-        resposta = NULL;
         insere_dados_pacote(pacote, buffer, bytesLidos);
         envia_pacote(pacote, socket);
         pacote = destroi_pacote(pacote);
     }
 
-    pacote = inicializa_pacote(FIM_DADOS, ++sequencia);
-    envia_pacote(pacote, socket);
-    pacote = destroi_pacote(pacote);
-
     fclose(arquivo);
 
-    return 0;
+    fim_dados();
+}
+
+void fim_dados(int socket, int sequencia) {
+    kermit_packet * pacote = inicializa_pacote(FIM_DADOS, sequencia);
+    envia_pacote(pacote, socket);
+    pacote = destroi_pacote(pacote);
+}
+
+void backup(char * nome_arquivo, int socket) {    
+    FILE * arquivo = fopen(nome_arquivo, "rb");
+    if(arquivo == NULL) {
+        printf("Erro ao ler arquivo. Encerrando execução\n");
+        return;
+    }
+
+    kermit_packet * pacote = inicializa_pacote(BACKUP, 0);
+    insere_dados_pacote(pacote, nome_arquivo, strlen(nome_arquivo));
+    kermit_packet * resposta = envia_pacote(pacote, socket);
+    destroi_pacote(pacote);
+
+    if (resposta == NULL) {
+        return;
+    }
+
+    switch (get_tipo_pacote(resposta)) {
+        case OK:
+            tamanho(arquivo, socket);
+            break;
+        case ERRO:
+            break;
+        default:
+            return;
+    }
 }
 
 int ler_entrada(char * buffer) {
@@ -114,10 +119,11 @@ int client() {
             case 1:
                 printf("Insira o nome do arquivo: \n");
                 ler_entrada(buffer);
-                if(envia_arquivo(buffer, socket) == -1) {
+                /*if(envia_arquivo(buffer, socket) == -1) {
                     break;
                 }
-                ler_entrada(buffer);
+                ler_entrada(buffer);*/
+                backup(buffer, socket);
                 break;
             case 2:
                 printf("TODO Restaura, mano\n");

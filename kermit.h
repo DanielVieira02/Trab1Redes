@@ -29,10 +29,11 @@
 #define FIM_DADOS   0X21
 #define ERRO        0X3F
 
+
 int client();
 int server();
 
-typedef struct krm_pack {
+typedef struct kermit_packet {
     unsigned char tamanho;
     unsigned char sequencia;
     unsigned char tipo;
