@@ -1,5 +1,7 @@
 #ifndef KERMIT_H
 #define KERMIT_H
+#include "kermit_structs.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -29,18 +31,28 @@
 #define FIM_DADOS   0X21
 #define ERRO        0X3F
 
-
 int client();
 int server();
 
-typedef struct kermit_packet {
-    unsigned char tamanho;
-    unsigned char sequencia;
-    unsigned char tipo;
-    unsigned char crc;
-    unsigned char dados[64];
-    unsigned char *ptr_dados;
-} kermit_packet;
+/// @brief Cria a estrutura que define o estado do pacote Kermit
+/// @param packet Pacote que será enviado
+/// @param procedure Procedimento que será executado
+/// @param socket Socket que será utilizado
+kermit_protocol_state * cria_estrutura_estado(kermit_packet * packet, kermit_protocol_state * (*procedure)(kermit_packet *, void *, int), int socket);
+
+/// @brief Destroi a estrutura que define o estado do pacote Kermit
+/// @param state Estrutura que será destruída
+/// @return Retorna NULL
+kermit_protocol_state * destroi_estrutura_estado(kermit_protocol_state * state);
+
+/// @brief Define os parâmetros do procedimento para determinado estado do pacote
+/// @param state Estado do pacote
+/// @param procedure_params Parâmetros do procedimento
+void define_parametros_procedimento_estado(kermit_protocol_state * state, void * procedure_params);
+
+/// @brief Uma função recursiva que invoca o estado do pacote, recebe os novos estados e os invoca novamente, até que o estado seja final
+/// @param state Estado do pacote
+void invoca_estado(kermit_protocol_state * state);
 
 /// @brief Aloca e inicializa os valores do pacote
 /// @param packet
@@ -62,12 +74,24 @@ kermit_packet * converte_bytes_para_pacote(char * dados);
 /// @return Retorna 1 se o pacote foi destruído corretamente, 0 caso contrário 
 kermit_packet * destroi_pacote(kermit_packet * packet);
 
+/// @brief Captura o tipo do pacote
+/// @param packet
+/// @return Retorna o tipo do pacote
 int get_tipo_pacote(kermit_packet * packet);
 
+/// @brief imprime o pacote
+/// @param packet
 void print_pacote(kermit_packet * packet);
 
+/// @brief Envia o pacote para o socket
+/// @param packet
+/// @param socket
+/// @return Retorna o pacote recebido como resposta, nulo se ocorrer erro no CRC
 kermit_packet * envia_pacote(kermit_packet * packet, int socket);
 
+/// @brief Recebe o pacote do socket
+/// @param socket
+/// @return Retorna o pacote recebido
 kermit_packet * recebe_pacote(int socket);
 
 /// @brief 

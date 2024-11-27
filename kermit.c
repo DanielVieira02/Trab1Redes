@@ -1,5 +1,45 @@
 #include "kermit.h"
 
+kermit_protocol_state * cria_estrutura_estado(kermit_packet * packet, kermit_protocol_state * (*procedure)(kermit_packet *, void *, int), int socket) {
+    kermit_protocol_state * state;
+    
+    if(!(state = malloc(sizeof(kermit_protocol_state)))) {
+        return NULL;
+    }
+
+    state->packet = packet;
+    state->procedure = procedure;
+    state->socket = socket;
+    state->procedure_params = NULL;
+
+    return state;
+}
+
+kermit_protocol_state * destroi_estrutura_estado(kermit_protocol_state * state) {
+    if (state->packet != NULL) {
+        destroi_pacote(state->packet);
+    }
+    free(state);
+    return NULL;
+}
+
+void invoca_estado(kermit_protocol_state * state) {
+    kermit_packet * resposta = envia_pacote(state->packet, state->socket);
+    kermit_protocol_state * next_state = state->procedure(resposta, state->procedure_params, state->socket);
+
+    destroi_estrutura_estado(state);
+    
+    if(next_state != NULL) {
+        invoca_estado(next_state);
+    }
+}
+
+void define_parametros_procedimento_estado(kermit_protocol_state * state, void * procedure_params){
+    if (state != NULL && procedure_params != NULL) {
+        state->procedure_params = procedure_params;
+    }
+}
+
 kermit_packet * inicializa_pacote(char tipo, char sequencia) {
     kermit_packet * packet;
 

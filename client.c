@@ -7,82 +7,87 @@
 #include "ConexaoRawSocket.h"
 #include "kermit.h"
 
-void tamanho(FILE * arquivo, int socket) {
-    fseek(arquivo, 0, fseek);
+kermit_protocol_state * fim_dados_client(kermit_packet * resposta, void * dados, int socket);
+kermit_protocol_state * dados_client(kermit_packet * resposta, void * dados, int socket);
+kermit_protocol_state * tamanho_client(kermit_packet * resposta, void * dados, int socket);
+kermit_protocol_state * backup_client(kermit_packet * resposta, void * dados, int socket);
 
-    kermit_packet * pacote = inicializa_pacote(TAMANHO, 1);
-    insere_dados_pacote(pacote, (char)ftell(arquivo), 63);
-    kermit_packet * resposta = envia_pacote(pacote);
-    destroi_pacote(pacote);
-
-    if (resposta == NULL) {
-        return;
-    }
-
-    switch (get_tipo_pacote(resposta)) {
-        case OK:
-            dados(arquivo, socket);
-            break;
-        case ERRO:
-            printf("Erro de acesso\n");
-        default:
-            return;
-    }
+kermit_protocol_state * fim_dados_client(kermit_packet * resposta, void * dados, int socket) {
+    return NULL;
 }
 
-void dados(FILE * arquivo, int socket) {
-    char *buffer;
-    if(!(buffer = malloc(sizeof(char) * 255))) {
-        return -1;
-    }
-    int sequencia = 2;
-    kermit_packet * pacote;
-    
+kermit_protocol_state * dados_client(kermit_packet * resposta, void * dados, int socket) {
+    kermit_protocol_state * next_state = NULL;
+    kermit_packet * packet;
+    char* buffer;
     size_t bytesLidos;
+    FILE* arquivo = (FILE *)dados;
 
-    while((bytesLidos = fread(buffer, 1, 63, arquivo)) > 0) {
-        pacote = inicializa_pacote(DADOS, ++sequencia);
-        insere_dados_pacote(pacote, buffer, bytesLidos);
-        envia_pacote(pacote, socket);
-        pacote = destroi_pacote(pacote);
+    if(!(buffer = malloc(sizeof(char) * 255))) {
+        fclose(arquivo);
+        return NULL;
     }
-
-    fclose(arquivo);
-
-    fim_dados();
-}
-
-void fim_dados(int socket, int sequencia) {
-    kermit_packet * pacote = inicializa_pacote(FIM_DADOS, sequencia);
-    envia_pacote(pacote, socket);
-    pacote = destroi_pacote(pacote);
-}
-
-void backup(char * nome_arquivo, int socket) {    
-    FILE * arquivo = fopen(nome_arquivo, "rb");
-    if(arquivo == NULL) {
-        printf("Erro ao ler arquivo. Encerrando execução\n");
-        return;
-    }
-
-    kermit_packet * pacote = inicializa_pacote(BACKUP, 0);
-    insere_dados_pacote(pacote, nome_arquivo, strlen(nome_arquivo));
-    kermit_packet * resposta = envia_pacote(pacote, socket);
-    destroi_pacote(pacote);
-
-    if (resposta == NULL) {
-        return;
-    }
-
     switch (get_tipo_pacote(resposta)) {
-        case OK:
-            tamanho(arquivo, socket);
-            break;
-        case ERRO:
+        case ACK:            
+            if((bytesLidos = fread(buffer, 1, 63, arquivo)) > 0) {
+                packet = inicializa_pacote(DADOS, 2);
+                insere_dados_pacote(packet, buffer, bytesLidos);
+                next_state = cria_estrutura_estado(packet, dados_client, socket);
+                define_parametros_procedimento_estado(packet, (void *)arquivo);
+            } else {
+                packet = inicializa_pacote(FIM_DADOS, 2);
+                next_state = cria_estrutura_estado(packet, fim_dados_client, socket);
+                fclose(arquivo);
+            }            
+    }
+
+    free(buffer);
+    return next_state;
+}
+
+kermit_protocol_state * tamanho_client(kermit_packet * resposta, void * dados, int socket) {
+    kermit_protocol_state * next_state = NULL;
+    kermit_packet * packet;
+    char* buffer;
+    size_t bytesLidos;
+    FILE* arquivo = (FILE *)dados;
+
+    if(!(buffer = malloc(sizeof(char) * 255))) {
+        fclose(arquivo);
+        return NULL;
+    }
+    switch (get_tipo_pacote(resposta)) {
+        case OK:            
+            if((bytesLidos = fread(buffer, 1, 63, arquivo)) > 0) {
+                packet = inicializa_pacote(DADOS, 2);
+                insere_dados_pacote(packet, buffer, bytesLidos);
+            }
+            next_state = cria_estrutura_estado(packet, dados_client, socket);
+            define_parametros_procedimento_estado(packet, (void *)arquivo);
+            
+    }
+
+    free(buffer);
+    return next_state;
+}
+
+kermit_protocol_state * backup_client(kermit_packet * resposta, void * dados, int socket) {
+    kermit_protocol_state * next_state;
+    FILE* arquivo = (FILE *)dados;
+    switch (get_tipo_pacote(resposta)) {
+        case OK:            
+            kermit_packet * packet = inicializa_pacote(TAMANHO, 1); // Inicializa pacote para ser enviado no próximo estado
+
+            fseek(arquivo, 0, SEEK_END); // Tamanho do arquivo
+            insere_dados_pacote(packet, (char *)ftell(arquivo), 63);
+            next_state = cria_estrutura_estado(packet, tamanho_client, socket);
+            define_parametros_procedimento_estado(next_state, dados);
             break;
         default:
-            return;
+            return NULL;
     }
+
+    return next_state;
 }
 
 int ler_entrada(char * buffer) {
@@ -96,6 +101,9 @@ int ler_entrada(char * buffer) {
 int client() {
     int socket = ConexaoRawSocket("eno1");
     char *buffer;
+    FILE * arquivo;
+    kermit_packet * packet;
+    kermit_protocol_state * initial_state;
     if(!(buffer = malloc(sizeof(char) * 255))) {
         return -1;
     }
@@ -112,18 +120,21 @@ int client() {
             fprintf(stderr, "Erro ao ler a linha\n");
             break;
         }
+
         
-        comando = atoi(buffer);
-        
+
         switch(comando) {
             case 1:
                 printf("Insira o nome do arquivo: \n");
-                ler_entrada(buffer);
-                /*if(envia_arquivo(buffer, socket) == -1) {
+                ler_entrada(buffer);                
+
+                if((arquivo = fopen(buffer, "r")) == NULL) {
                     break;
-                }
-                ler_entrada(buffer);*/
-                backup(buffer, socket);
+                }                // se o arquivo existe, cria um pacote e troca o estado dele
+                packet = inicializa_pacote(BACKUP, 0);
+                initial_state = cria_estrutura_estado;
+                define_parametros_procedimento_estado(initial_state, (void *)arquivo);
+                invoca_estado(initial_state);
                 break;
             case 2:
                 printf("TODO Restaura, mano\n");

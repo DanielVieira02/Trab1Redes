@@ -3,11 +3,20 @@
 
 void backup(kermit_packet * packet, int socket) {
     FILE * arquivo = fopen(get_dados_pacote(packet), "w");
+    kermit_packet * pacote;
 
-    kermit_packet * pacote = inicializa_pacote(OK, 0);
+    if (arquivo != NULL) {
+        pacote = inicializa_pacote(OK, 0);
+    } else {
+        pacote = inicializa_pacote(ERRO, 0);
+        insere_dados_pacote(packet, 1, 1);
+    }
+     
     kermit_packet * resposta = envia_pacote(pacote, socket);
 
-    tamanho(resposta, arquivo, socket);
+    if (arquivo != NULL) {
+        tamanho(resposta, arquivo, socket);
+    }
 }
 
 void tamanho(kermit_packet * packet, FILE * arquivo, int socket) {
@@ -67,6 +76,7 @@ void server_routine() {
     kermit_packet * packet = NULL;
 
     while(1) {
+        // fica esperando pacotes
         packet = recebe_pacote(socket);
 
 	    if (packet != NULL) {
