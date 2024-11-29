@@ -1,4 +1,5 @@
 #include "kermit.h"
+#include "ConexaoRawSocket.h"
 
 int main(int argc, char * argv[]) {
     if (argc < 2) {
@@ -7,11 +8,13 @@ int main(int argc, char * argv[]) {
     }
 
     int isClient = (atoi(argv[1]) == 1);
-    
+    char *nome_socket = get_ethernet_interface_name();
+    printf("Socket: %s\n", nome_socket);
+    int socket = ConexaoRawSocket(nome_socket);
     if(isClient) {
-        client();
+        client(socket);
     } else {
-        server();
+        server(socket);
     }
 
     return 0;

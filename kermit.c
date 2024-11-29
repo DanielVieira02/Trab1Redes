@@ -235,3 +235,38 @@ int envia_ack(int socket) {
 int envia_nack(int socket) {
     return cria_envia_pck(NACK, 0, NULL, 0, socket);
 }
+
+char *get_ethernet_interface_name() {
+    struct ifaddrs *ifaddr, *ifa;
+    char *interface_name = NULL;
+
+    // Obter lista de interfaces
+    if (getifaddrs(&ifaddr) == -1) {
+        perror("getifaddrs");
+        return NULL;
+    }
+
+    // Iterar pelas interfaces
+    for (ifa = ifaddr; ifa != NULL; ifa = ifa->ifa_next) {
+        if (ifa->ifa_addr == NULL)
+            continue;
+
+        // Ignorar interfaces que não são IPv4
+        if (ifa->ifa_addr->sa_family != AF_INET)
+            continue;
+
+        // Ignorar interfaces de loopback
+        if (ifa->ifa_flags & IFF_LOOPBACK)
+            continue;
+
+        // Verificar se a interface está ativa
+        if (ifa->ifa_flags & IFF_UP) {
+            // Copiar o nome da interface (primeira interface Ethernet encontrada)
+            interface_name = strdup(ifa->ifa_name);
+            break;
+        }
+    }
+
+    freeifaddrs(ifaddr);
+    return interface_name;
+}

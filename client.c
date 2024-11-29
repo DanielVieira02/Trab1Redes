@@ -4,7 +4,6 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 
-#include "ConexaoRawSocket.h"
 #include "kermit.h"
 
 kermit_protocol_state * fim_dados_client(kermit_packet * resposta, void * dados, int socket);
@@ -98,8 +97,7 @@ int ler_entrada(char * buffer) {
     return 0;
 }
 
-int client() {
-    int socket = ConexaoRawSocket("eno1");
+int client(int socket) {
     char *buffer;
     FILE * arquivo;
     kermit_packet * packet;

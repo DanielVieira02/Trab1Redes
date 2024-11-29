@@ -2,6 +2,7 @@
 #define KERMIT_H
 #include "kermit_structs.h"
 
+#define _POSIX_C_SOURCE 200809L // para usar a função strdup
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -16,6 +17,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <sys/statvfs.h>
+#include <ifaddrs.h>
 
 #define MARCADOR_INICIO 0b01111110
 
@@ -36,8 +38,8 @@
 #define MSG_ERR_NAO_ENCONTRADO  3
 #define MSG_ERR_SEQUENCIA       4           // o campo sequencia indica o pacote esperado
 
-int client();
-int server();
+int client(int socket);
+int server(int socket);
 
 /// @brief Cria a estrutura que define o estado do pacote Kermit
 /// @param packet Pacote que será enviado
@@ -150,4 +152,5 @@ int envia_pacote(kermit_packet * packet, int socket);
 //TODO: Definir o CRC porque eu ainda não entendi pra que isso serve
 unsigned char crc(kermit_packet * packet);
 
+char *get_ethernet_interface_name();
 #endif

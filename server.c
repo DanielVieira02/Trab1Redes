@@ -1,4 +1,3 @@
-#include "ConexaoRawSocket.h"
 #include "kermit.h"
 
 /// @brief Inicia o fluxo de dados, recebendo os dados do pacote e escrevendo no arquivo 
@@ -145,8 +144,7 @@ void trata_pacote(kermit_packet * packet, int socket) {
     }
 }
 
-void server_routine() {
-    int socket = ConexaoRawSocket("eno1");
+int server(int socket) {
     kermit_packet * packet = NULL;
 
     while(1) {
@@ -155,11 +153,7 @@ void server_routine() {
 
 	    if (packet != NULL) {
             trata_pacote(packet, socket);
-        }   
+        }
     }
-}
-
-int server(int argc, char * argv[]) {
-    server_routine();
     return 0;
 }
