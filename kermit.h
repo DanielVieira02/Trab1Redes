@@ -15,21 +15,26 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
+#include <sys/statvfs.h>
 
-#define MARCADOR_INICIO 0x7E
+#define MARCADOR_INICIO 0b01111110
 
-#define ACK         0X00
-#define NACK        0X01
-#define OK          0X02
-#define BACKUP      0X04
-#define RESTAURA    0X05
-#define VERIFICA    0X06
-#define OK_CHECKSUM 0X0D
-#define OK_TAMANHO  0X1E
-#define TAMANHO     0X1F
-#define DADOS       0x20
-#define FIM_DADOS   0X21
-#define ERRO        0X3F
+#define ACK                     0b00000
+#define NACK                    0b00001
+#define OK                      0b00010
+#define BACKUP                  0b00100
+#define RESTAURA                0b00101
+#define VERIFICA                0b00110
+#define OK_CHECKSUM             0b01101
+#define OK_TAMANHO              0b01110
+#define TAMANHO                 0b01111
+#define DADOS                   0b10000
+#define FIM_DADOS               0b10001
+#define ERRO                    0b11111
+#define MSG_ERR_ACESSO          1
+#define MSG_ERR_ESPACO          2
+#define MSG_ERR_NAO_ENCONTRADO  3
+#define MSG_ERR_SEQUENCIA       4           // o campo sequencia indica o pacote esperado
 
 int client();
 int server();
@@ -71,7 +76,7 @@ kermit_packet * converte_bytes_para_pacote(char * dados);
 
 /// @brief Desaloca o pacote
 /// @param packet 
-/// @return Retorna 1 se o pacote foi destruído corretamente, 0 caso contrário 
+/// @return Retorna NULL
 kermit_packet * destroi_pacote(kermit_packet * packet);
 
 /// @brief Captura o tipo do pacote
@@ -83,12 +88,6 @@ int get_tipo_pacote(kermit_packet * packet);
 /// @param packet
 void print_pacote(kermit_packet * packet);
 
-/// @brief Envia o pacote para o socket
-/// @param packet
-/// @param socket
-/// @return Retorna o pacote recebido como resposta, nulo se ocorrer erro no CRC
-kermit_packet * envia_pacote(kermit_packet * packet, int socket);
-
 /// @brief Recebe o pacote do socket
 /// @param socket
 /// @return Retorna o pacote recebido
@@ -97,6 +96,56 @@ kermit_packet * recebe_pacote(int socket);
 /// @brief 
 /// @param packet 
 unsigned char * get_dados_pacote(kermit_packet * packet);
+
+/// @brief tamanho do pacote (5 bits)
+/// @param packet 
+/// @return Retorna o tamanho do pacote
+unsigned int get_tamanho_pacote(kermit_packet * packet);
+
+/// @brief Insere os dados no pacote e o envia (deixar o codigo mais limpo)
+/// @param packet a estrutura do pacote que sera montada
+/// @param dados os dados que serao enviados
+/// @param tamanho o tamanho dos dados
+/// @param socket o socket que sera utilizado
+/// @return Retorna 1 se o pacote foi enviado, -1 por erro no envio (função send)
+int insere_envia_pck(kermit_packet * packet, char * dados, int tamanho, int socket);
+
+/// @brief Cria e envia o pacote, no final destroi o pacote
+/// @param tipo tipo do pacote
+/// @param sequencia qual é o indice do pacote
+/// @param dados dados que serão enviados
+/// @param tamanho tamanho do campo de dados
+/// @param socket socket que será utilizado
+/// @return Retorna 1 se o pacote foi enviado, -1 por erro no envio (função send)
+int cria_envia_pck(char tipo, char sequencia, char * dados, int tamanho, int socket);
+
+/// @brief Envia o pacote ACK, que é um pacote vazio
+/// @param socket socket que será utilizado
+/// @return Retorna 1 se o pacote foi enviado, -1 por erro no envio (função send)
+int envia_ack(int socket);
+
+/// @brief Envia o pacote NACK, que é um pacote vazio
+/// @param socket socket que será utilizado
+/// @return Retorna 1 se o pacote foi enviado, -1 por erro no envio (função send)
+int envia_nack(int socket);
+
+/// @brief  Função que implementa o protocolo stop-and-wait
+/// @param packet pacote que será enviado
+/// @param socket socket que será utilizado
+/// @return Retorna a resposta do pacote enviado, NULL se ocorrer erro no CRC ou timeout
+kermit_packet * stop_n_wait(kermit_packet * packet, int socket);
+
+/// @brief Função que espera um pacote
+/// @param resposta pacote que será recebido
+/// @param socket socket que será utilizado
+/// @return Retorna 1 se o pacote foi recebido, 0 por erro no CRC
+int espera_pacote(kermit_packet * resposta, int socket);
+
+/// @brief Envia um pacote
+/// @param packet pacote que será enviado
+/// @param socket socket que será utilizado
+/// @return Retorna 1 se o pacote foi enviado, -1 por erro no envio (função send)
+int envia_pacote(kermit_packet * packet, int socket);
 
 //TODO: Definir o CRC porque eu ainda não entendi pra que isso serve
 unsigned char crc(kermit_packet * packet);

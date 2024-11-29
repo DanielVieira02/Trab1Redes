@@ -33,7 +33,7 @@ kermit_protocol_state * dados_client(kermit_packet * resposta, void * dados, int
                 packet = inicializa_pacote(DADOS, 2);
                 insere_dados_pacote(packet, buffer, bytesLidos);
                 next_state = cria_estrutura_estado(packet, dados_client, socket);
-                define_parametros_procedimento_estado(packet, (void *)arquivo);
+                define_parametros_procedimento_estado(next_state, (void *)arquivo);
             } else {
                 packet = inicializa_pacote(FIM_DADOS, 2);
                 next_state = cria_estrutura_estado(packet, fim_dados_client, socket);
@@ -63,7 +63,7 @@ kermit_protocol_state * tamanho_client(kermit_packet * resposta, void * dados, i
                 insere_dados_pacote(packet, buffer, bytesLidos);
             }
             next_state = cria_estrutura_estado(packet, dados_client, socket);
-            define_parametros_procedimento_estado(packet, (void *)arquivo);
+            define_parametros_procedimento_estado(next_state, (void *)arquivo);
             
     }
 
@@ -108,7 +108,7 @@ int client() {
         return -1;
     }
 
-    int comando;
+    int comando = -1;
     int executar = 1;
 
     while(executar) {
@@ -132,7 +132,7 @@ int client() {
                     break;
                 }                // se o arquivo existe, cria um pacote e troca o estado dele
                 packet = inicializa_pacote(BACKUP, 0);
-                initial_state = cria_estrutura_estado;
+                initial_state = cria_estrutura_estado(packet, backup_client, socket);
                 define_parametros_procedimento_estado(initial_state, (void *)arquivo);
                 invoca_estado(initial_state);
                 break;

@@ -24,7 +24,7 @@ kermit_protocol_state * destroi_estrutura_estado(kermit_protocol_state * state) 
 }
 
 void invoca_estado(kermit_protocol_state * state) {
-    kermit_packet * resposta = envia_pacote(state->packet, state->socket);
+    kermit_packet * resposta = stop_n_wait(state->packet, state->socket);
     kermit_protocol_state * next_state = state->procedure(resposta, state->procedure_params, state->socket);
 
     destroi_estrutura_estado(state);
@@ -89,7 +89,7 @@ kermit_packet * converte_bytes_para_pacote(char * dados) {
 }
 
 char * converte_pacote_para_bytes(kermit_packet * packet) {
-    unsigned char tamanho = packet->tamanho;
+    int tamanho = get_tamanho_pacote(packet);
     char * dados = malloc(sizeof(char) * (tamanho + 5));
 
     dados[0] = MARCADOR_INICIO;
@@ -119,6 +119,10 @@ unsigned char * get_dados_pacote(kermit_packet * packet) {
     return packet->dados;
 }
 
+unsigned int get_tamanho_pacote(kermit_packet * packet) {
+    return (unsigned int) (packet->tamanho % (1 << 5)); // 5 bits apenas
+}
+
 void print_pacote(kermit_packet * packet) {
     printf("Tamanho: %d\n", packet->tamanho);
     printf("Sequência: %d\n", packet->sequencia);
@@ -138,7 +142,7 @@ kermit_packet * recebe_pacote(int socket) {
     int buffer_length;
     kermit_packet * packet = NULL;
 
-    buffer_length = recv(socket, 65, 68, 0);
+    buffer_length = recv(socket, buffer, 68, 0);
 	if (buffer_length == -1) {
 	    return NULL;
 	}
@@ -154,20 +158,32 @@ kermit_packet * recebe_pacote(int socket) {
 	return packet;
 }
 
-kermit_packet * envia_pacote(kermit_packet * packet, int socket) {
+int envia_pacote(kermit_packet * packet, int socket) {
     char * dados = converte_pacote_para_bytes(packet);
+    int bytes_enviados = 0;
+
+    bytes_enviados = send(socket, (char*)dados, 100, 0);
+
+    free(dados);
+    return bytes_enviados;
+}
+
+int espera_pacote(kermit_packet * resposta, int socket) {
+    // Se nao for possivel ler, retorna -1 (timeout estourado)
+    if(!(resposta = recebe_pacote(socket))) {
+        // trata CRC aqui 
+        return 0;
+    }
+    return 1;
+}
+
+kermit_packet * stop_n_wait(kermit_packet * packet, int socket) {
     kermit_packet * resposta = NULL;
 
-    while (resposta != NULL) {
-        if (send(socket, (char*)dados, 100, 0) == -1) {
-            fprintf(stderr, "Erro ao enviar mensagem\n");
-        }
-
-        resposta = recebe_pacote(socket);
-    }
+    envia_pacote(packet, socket);
+    if(espera_pacote(resposta, socket)) return resposta;
     
-    free(dados);
-    return resposta;
+    return NULL;
 }
 
 unsigned char crc(kermit_packet *packet) {
@@ -191,4 +207,31 @@ unsigned char crc(kermit_packet *packet) {
     }
 
     return crc;
+}
+
+int insere_envia_pck(kermit_packet * packet, char * dados, int tamanho, int socket) {
+    insere_dados_pacote(packet, dados, tamanho);
+    return envia_pacote(packet, socket);
+}
+
+int cria_envia_pck(char tipo, char sequencia, char * dados, int tamanho, int socket) {
+    kermit_packet * packet = inicializa_pacote(tipo, sequencia);
+    int retorno = 1;
+    insere_dados_pacote(packet, dados, tamanho);
+
+    if(!envia_pacote(packet, socket)) {
+        fprintf(stderr, "Erro ao enviar pacote\n");
+        retorno = -1;
+    }
+
+    destroi_pacote(packet);
+    return retorno;
+}
+
+int envia_ack(int socket) {
+    return cria_envia_pck(ACK, 0, NULL, 0, socket);
+}
+
+int envia_nack(int socket) {
+    return cria_envia_pck(NACK, 0, NULL, 0, socket);
 }
