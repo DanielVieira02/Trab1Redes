@@ -38,71 +38,67 @@
 #define MSG_ERR_NAO_ENCONTRADO  3
 #define MSG_ERR_SEQUENCIA       4           // o campo sequencia indica o pacote esperado
 
+#define TAM_CAMPO_MARCADOR      8
+#define TAM_CAMPO_TAM           6
+#define TAM_CAMPO_SEQ           5
+#define TAM_CAMPO_TIPO          5
+#define TAM_CAMPO_DADOS         64
+#define TAM_CAMPO_CRC           8
+#define TAM_PACOTE              96
+#define TAM_PACOTE_BYTES        12
+
+#define OFFSET_MARCADOR         0
+#define OFFSET_TAM              8
+#define OFFSET_SEQ              14
+#define OFFSET_TIPO             19
+#define OFFSET_DADOS            24
+#define OFFSET_CRC              88
+
 int client(int socket);
 int server(int socket);
-
-/// @brief Cria a estrutura que define o estado do pacote Kermit
-/// @param packet Pacote que será enviado
-/// @param procedure Procedimento que será executado
-/// @param socket Socket que será utilizado
-kermit_protocol_state * cria_estrutura_estado(kermit_packet * packet, kermit_protocol_state * (*procedure)(kermit_packet *, void *, int), int socket);
-
-/// @brief Destroi a estrutura que define o estado do pacote Kermit
-/// @param state Estrutura que será destruída
-/// @return Retorna NULL
-kermit_protocol_state * destroi_estrutura_estado(kermit_protocol_state * state);
-
-/// @brief Define os parâmetros do procedimento para determinado estado do pacote
-/// @param state Estado do pacote
-/// @param procedure_params Parâmetros do procedimento
-void define_parametros_procedimento_estado(kermit_protocol_state * state, void * procedure_params);
-
-/// @brief Uma função recursiva que invoca o estado do pacote, recebe os novos estados e os invoca novamente, até que o estado seja final
-/// @param state Estado do pacote
-void invoca_estado(kermit_protocol_state * state);
 
 /// @brief Aloca e inicializa os valores do pacote
 /// @param packet
 /// @return Retorna 1 se o pacote foi inicializado corretamente, 0 caso contrário 
-kermit_packet * inicializa_pacote(char tipo, char sequencia);
+unsigned char * inicializa_pacote(char tipo, unsigned char sequencia, unsigned char * dados);
 
 /// @brief Insere os dados no pacote e define o valor do tamanho da estrutura
 /// @param packet 
 /// @return Retorna 1 se os dados foram inseridos corretamente, 0 se o pacote atingiu o limite máximo de tamanho
-int insere_dados_pacote(kermit_packet * packet, char * dados, int tamanho);
+int insere_dados_pacote(unsigned char * packet, char * dados, int tamanho);
 
-/// @brief Pega o conjunto de dados e transforma na estrutura kermit_packet
+/// @brief Pega o conjunto de dados e transforma na estrutura unsigned char
 /// @param dados 
-/// @return Estrutura kermit_packet composta das informações em dados
-kermit_packet * converte_bytes_para_pacote(char * dados);
+/// @return Estrutura unsigned char composta das informações em dados
+unsigned char * converte_bytes_para_pacote(char * dados);
 
 /// @brief Desaloca o pacote
 /// @param packet 
 /// @return Retorna NULL
-kermit_packet * destroi_pacote(kermit_packet * packet);
+unsigned char * destroi_pacote(unsigned char * packet);
 
 /// @brief Captura o tipo do pacote
 /// @param packet
 /// @return Retorna o tipo do pacote
-int get_tipo_pacote(kermit_packet * packet);
+unsigned char get_tipo_pacote(unsigned char * packet);
 
 /// @brief imprime o pacote
 /// @param packet
-void print_pacote(kermit_packet * packet);
+void print_pacote(unsigned char * packet);
 
 /// @brief Recebe o pacote do socket
 /// @param socket
 /// @return Retorna o pacote recebido
-kermit_packet * recebe_pacote(int socket);
+unsigned char * recebe_pacote(int socket);
 
 /// @brief 
 /// @param packet 
-unsigned char * get_dados_pacote(kermit_packet * packet);
+unsigned char * get_dados_pacote(unsigned char * packet);
 
 /// @brief tamanho do pacote (5 bits)
 /// @param packet 
 /// @return Retorna o tamanho do pacote
-unsigned int get_tamanho_pacote(kermit_packet * packet);
+unsigned char get_tamanho_pacote(unsigned char * packet);
 
 /// @brief Insere os dados no pacote e o envia (deixar o codigo mais limpo)
 /// @param packet a estrutura do pacote que sera montada
@@ -110,7 +106,7 @@ unsigned int get_tamanho_pacote(kermit_packet * packet);
 /// @param tamanho o tamanho dos dados
 /// @param socket o socket que sera utilizado
 /// @return Retorna 1 se o pacote foi enviado, -1 por erro no envio (função send)
-int insere_envia_pck(kermit_packet * packet, char * dados, int tamanho, int socket);
+int insere_envia_pck(unsigned char * packet, char * dados, int tamanho, int socket);
 
 /// @brief Cria e envia o pacote, no final destroi o pacote
 /// @param tipo tipo do pacote
@@ -119,7 +115,7 @@ int insere_envia_pck(kermit_packet * packet, char * dados, int tamanho, int sock
 /// @param tamanho tamanho do campo de dados
 /// @param socket socket que será utilizado
 /// @return Retorna 1 se o pacote foi enviado, -1 por erro no envio (função send)
-int cria_envia_pck(char tipo, char sequencia, char * dados, int tamanho, int socket);
+int cria_envia_pck(char tipo, char sequencia, char * dados, int socket);
 
 /// @brief Envia o pacote ACK, que é um pacote vazio
 /// @param socket socket que será utilizado
@@ -135,22 +131,88 @@ int envia_nack(int socket);
 /// @param packet pacote que será enviado
 /// @param socket socket que será utilizado
 /// @return Retorna a resposta do pacote enviado, NULL se ocorrer erro no CRC ou timeout
-kermit_packet * stop_n_wait(kermit_packet * packet, int socket);
-
-/// @brief Função que espera um pacote
-/// @param resposta pacote que será recebido
-/// @param socket socket que será utilizado
-/// @return Retorna 1 se o pacote foi recebido, 0 por erro no CRC
-int espera_pacote(kermit_packet * resposta, int socket);
+unsigned char * stop_n_wait(unsigned char * packet, int socket);
 
 /// @brief Envia um pacote
 /// @param packet pacote que será enviado
 /// @param socket socket que será utilizado
 /// @return Retorna 1 se o pacote foi enviado, -1 por erro no envio (função send)
-int envia_pacote(kermit_packet * packet, int socket);
+int envia_pacote(unsigned char * packet, int socket);
 
 //TODO: Definir o CRC porque eu ainda não entendi pra que isso serve
-unsigned char crc(kermit_packet * packet);
+unsigned char crc(unsigned char * packet);
 
 char *get_ethernet_interface_name();
+
+
+/// @brief Função que lê bytes entre um intervalo deles
+/// @param inicio byte inicial, no qual se inicia a leitura
+/// @param posicao posicao do primeiro bit a ser lido
+/// @param quantidade quantidade de bits lidos
+unsigned char * le_intervalo_bytes(unsigned char * src, unsigned int inicio, unsigned int posicao, unsigned int quantidade);
+
+/// @brief Seta o marcador do pacote
+/// @param package pacote em que será escrito o marcador
+/// @param marcador o marcador em si
+void set_marcador(unsigned char * package, unsigned char marcador);
+
+/// @brief Seta o tamanho do pacote
+/// @param package pacote em que será escrito o tamanho
+/// @param tamanho o tamanho em si 
+void set_tamanho(unsigned char * package, unsigned char tamanho);
+
+/// @brief Seta o numero da sequencia do pacote
+/// @param package pacote em que será escrito a sequencia
+/// @param sequencia a sequencia em si
+void set_sequencia(unsigned char * package, unsigned char sequencia);
+
+/// @brief Seta o tipo do pacote
+/// @param package pacote em que será escrito o tipo
+/// @param tipo o tipo em si
+void set_tipo(unsigned char * package, unsigned char tipo);
+
+/// @brief Seta os dados do pacote
+/// @param package pacote em que será escrito os dados
+/// @param dados os dados em si
+void set_dados(unsigned char * package, unsigned char * dados);
+
+/// @brief Seta o CRC, é necessário que o campo tamanho já esteja setado.
+/// @param package pacote em que será escrito o CRC
+/// @param tamanho o CRC em si
+void set_crc(unsigned char * package, unsigned char crc);
+
+/// @brief Função que escreve os bytes dados em src em um intervalo específico
+/// @param src De onde virá os dados
+/// @param dest destino dos dados
+/// @param byte_inicial bytes onde se iniciará os dados em dest
+/// @param posicao posicao do bit no byte_inicial em dest
+/// @param tamanho quantidade de bits que serão escritos
+void escreve_bytes_intervalo(unsigned char * src, unsigned char * dest, unsigned int byte_inicial, unsigned int posicao, unsigned int tamanho);
+
+/// @brief Função que pega o marcador do pacote
+/// @param packet pacote que será lido
+/// @return Retorna o marcador do pacote 
+unsigned char get_marcador_pacote(unsigned char * packet);
+
+/// @brief Função que pega o tamanho do pacote
+/// @param packet pacote que será lido
+/// @return Retorna o tamanho do pacote
+unsigned int get_sequencia_pacote(unsigned char * packet);
+
+/// @brief Função que pega a sequencia do pacote
+/// @param packet pacote que será lido
+/// @return Retorna a sequencia do pacote
+unsigned char get_tipo_pacote(unsigned char * packet);
+
+/// @brief Função que pega os dados do pacote
+/// @param packet pacote que será lido
+/// @return Retorna os dados do pacote
+unsigned char * get_dados_pacote(unsigned char * packet);
+
+/// @brief Função que pega o CRC do pacote
+/// @param packet pacote que será lido
+/// @return Retorna o CRC do pacote
+unsigned char get_CRC(unsigned char * packet);
+
+void little_to_big_endian(unsigned char *data, size_t size);
 #endif

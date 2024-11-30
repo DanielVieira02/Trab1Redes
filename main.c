@@ -10,7 +10,7 @@ int main(int argc, char * argv[]) {
     int isClient = (atoi(argv[1]) == 1);
     char *nome_socket = get_ethernet_interface_name();
     printf("Socket: %s\n", nome_socket);
-    int socket = ConexaoRawSocket(nome_socket);
+    int socket = ConexaoRawSocket("lo");
     if(isClient) {
         client(socket);
     } else {

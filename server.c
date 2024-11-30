@@ -16,17 +16,17 @@ int recebe_tamanho(FILE * arquivo, int socket);
 /// @param packet pacote com o nome do arquivo
 /// @param socket socket que será utilizado
 /// @return 1 se o arquivo foi salvo corretamente, 0 caso contrário
-int backup(kermit_packet * packet, int socket);
+int backup(unsigned char * packet, int socket);
 
-int backup(kermit_packet * packet, int socket) {
+int backup(unsigned char * packet, int socket) {
     FILE * arquivo = fopen((char *) get_dados_pacote(packet), "w");
-    kermit_packet * pacote;
+    unsigned char * pacote;
 
     // Verifica se o arquivo foi aberto corretamente
     if (arquivo != NULL) {
-        pacote = inicializa_pacote(OK, 0);
+        pacote = inicializa_pacote(OK, 0, NULL);
     } else {
-        pacote = inicializa_pacote(ERRO, 0);
+        pacote = inicializa_pacote(ERRO, 0, (unsigned char *) MSG_ERR_ACESSO);
         insere_dados_pacote(packet, (char *) MSG_ERR_ACESSO, 1);
     }
      
@@ -49,7 +49,7 @@ int backup(kermit_packet * packet, int socket) {
 int recebe_tamanho(FILE * arquivo, int socket) {
     char * data = NULL;
     unsigned long long espaco;
-    kermit_packet * recebido_cliente = NULL;
+    unsigned char * recebido_cliente = NULL;
     struct statvfs fs;
 
     recebido_cliente = recebe_pacote(socket); // espera o cliente enviar o tamanho do arquivo
@@ -67,21 +67,22 @@ int recebe_tamanho(FILE * arquivo, int socket) {
     // Enquanto o pacote recebido não é do tipo correto
     while(get_tipo_pacote(recebido_cliente) != TAMANHO){
         envia_nack(socket);
-        espera_pacote(recebido_cliente, socket);
+        destroi_pacote(recebido_cliente);
+        recebido_cliente = recebe_pacote(socket);
     }
 
     if (espaco < atoi(data)) { // Verifica se há espaço suficiente
-        cria_envia_pck(ERRO, 0, (char *) MSG_ERR_ESPACO, 1, socket);
+        cria_envia_pck(ERRO, 0, (char *) MSG_ERR_ESPACO, socket);
         fprintf(stderr, "server_backup: Espaço insuficiente\n");
         return 0;
     }
 
-    cria_envia_pck(OK, 0, NULL, 0, socket);
+    cria_envia_pck(OK, 0, NULL, socket);
     return 1;
 }
 
 void inicia_fluxo_dados(FILE * arquivo, int socket) {
-    kermit_packet * recebido_cliente = NULL;
+    unsigned char * recebido_cliente = NULL;
     int tipo_cliente = 0, sequencia = 0;
 
     recebido_cliente = recebe_pacote(socket);
@@ -99,17 +100,17 @@ void inicia_fluxo_dados(FILE * arquivo, int socket) {
     // Enquanto não for o fim dos dados
     while(tipo_cliente == DADOS && tipo_cliente != FIM_DADOS) { 
         // Verifica se o pacote recebido é do tipo correto
-        if(recebido_cliente->sequencia != sequencia){
-            cria_envia_pck(ERRO, sequencia, (char *) MSG_ERR_SEQUENCIA, 1, socket);
+        if(get_sequencia_pacote(recebido_cliente) != sequencia){
+            cria_envia_pck(ERRO, sequencia, (char *) MSG_ERR_SEQUENCIA, socket);
 
             // Destroi o pacote recebido e espera o próximo
             destroi_pacote(recebido_cliente);
-            espera_pacote(recebido_cliente, socket);
+            recebido_cliente = recebe_pacote(socket);
             continue; // Pula para a próxima iteração, com o pacote atualizado
         }
 
         // Se tudo der certo, escreve no arquivo
-        fwrite(get_dados_pacote(recebido_cliente), sizeof(char), recebido_cliente->tamanho, arquivo); 
+        fwrite(get_dados_pacote(recebido_cliente), sizeof(char), get_tamanho_pacote(recebido_cliente), arquivo); 
 
         // Envia ACK e recebe o próximo pacote
         destroi_pacote(recebido_cliente);
@@ -124,7 +125,7 @@ void inicia_fluxo_dados(FILE * arquivo, int socket) {
     fclose(arquivo);
 }
 
-void trata_pacote(kermit_packet * packet, int socket) {
+void trata_pacote(unsigned char * packet, int socket) {
     /*
         Analisa CRC
         Se erro:
@@ -145,7 +146,7 @@ void trata_pacote(kermit_packet * packet, int socket) {
 }
 
 int server(int socket) {
-    kermit_packet * packet = NULL;
+    unsigned char * packet = NULL;
 
     while(1) {
         // fica esperando pacotes

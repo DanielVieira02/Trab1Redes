@@ -7,6 +7,9 @@ TARGET  = main                  #Executavel
 #Regra default (primeira regra)
 all: $(TARGET)
 
+debug: CCFLAGS += -DDEBUG
+debug: all
+
 $(TARGET): $(OBJECTS)
 	$(CC) $(CCFLAGS) -o $@ $^
 
