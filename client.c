@@ -62,7 +62,7 @@ kermit_protocol_state * tamanho_client(unsigned char * resposta, void * dados, i
 }
 
 void backup_client(FILE *dados, char *nome_arq, int socket) {
-    FILE* arquivo = (FILE *)dados;
+    FILE* arquivo = dados;
     unsigned char *recebido = NULL, *enviado = NULL;
     long tamanho = 0;
 
@@ -75,7 +75,7 @@ void backup_client(FILE *dados, char *nome_arq, int socket) {
     // pega o tamanho do arquivo
     fseek(arquivo, 0, SEEK_END);
     tamanho = ftell(arquivo);
-    
+
     switch (get_tipo_pacote(recebido)) {
         case OK:
             unsigned char * packet = inicializa_pacote(TAMANHO, 0, NULL);
@@ -131,7 +131,7 @@ int client(int socket) {
 
                 if((arquivo = fopen(buffer, "r")) == NULL) {
                     break;
-                }                // se o arquivo existe, cria um pacote e troca o estado dele
+                }
                 
                 backup_client(arquivo, buffer, socket);
                 break;

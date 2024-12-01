@@ -8,14 +8,13 @@ unsigned char * inicializa_pacote(char tipo, unsigned char sequencia, unsigned c
         return NULL;
     }
 
-    set_tamanho(packet, tamanho_dados);
     set_marcador(packet, MARCADOR_INICIO);
-    set_tipo(packet, tipo);
+    set_tamanho(packet, tamanho_dados);
     set_sequencia(packet, sequencia);
+    set_tipo(packet, tipo);
     set_dados(packet, dados);
-
     set_crc(packet, 0);
-    
+
     return packet;
 }
 
@@ -247,7 +246,7 @@ unsigned char get_marcador_pacote(unsigned char * packet){
 }
 
 unsigned char get_tamanho_pacote(unsigned char * packet) {
-    int byte = OFFSET_TAM/8; // o byte atual é este.
+    int byte = OFFSET_TAM / 8; // o byte atual é este.
     int posicao = OFFSET_TAM % 8;   // a posicao dentro do byte é esta
 
     return le_intervalo_bytes(packet, byte, posicao, TAM_CAMPO_TAM)[0];
@@ -287,14 +286,17 @@ unsigned char * le_intervalo_bytes(unsigned char * src, unsigned int inicio, uns
     int bytes_andados = 0;
   
     if(quantidade % 8 == 0) {
-        intervalo = (unsigned char *) malloc(quantidade / 8);
+        intervalo = malloc(quantidade / 8);
+        intervalo = memset(intervalo, 0, quantidade / 8);
     } else {
-        intervalo = (unsigned char *) malloc((quantidade / 8) + 1);
+        intervalo = malloc((quantidade / 8) + 1);
+        intervalo = memset(intervalo, 0, (quantidade / 8) + 1);
     }
 
     if(posicao == 0) {
         bytes_andados--;
     }
+
     for (int pos = posicao, bits_lidos = 0; bits_lidos < quantidade; pos++, bits_lidos++) {
         if(pos % 8 == 0) {
             bytes_andados++;
@@ -323,21 +325,20 @@ void set_tipo(unsigned char * package, unsigned char tipo){
 }
 
 void set_dados(unsigned char * package, unsigned char * dados){
-    escreve_bytes_intervalo(dados, package, OFFSET_DADOS/8, OFFSET_DADOS % 8, TAM_CAMPO_DADOS * 8);
+    escreve_bytes_intervalo(dados, package, OFFSET_DADOS/8, OFFSET_DADOS % 8, strlen((char *)dados) * 8);
 }
 
 void set_crc(unsigned char * package, unsigned char crc){
-    escreve_bytes_intervalo(&crc, package, (OFFSET_DADOS + get_tamanho_pacote(package) /8), (OFFSET_DADOS + get_tamanho_pacote(package)) % 8, TAM_CAMPO_CRC);
+    unsigned int tamanho_pacote = (int)get_tamanho_pacote(package);
+    escreve_bytes_intervalo(&crc, package, (OFFSET_DADOS + tamanho_pacote) / 8, (OFFSET_DADOS + tamanho_pacote) % 8, TAM_CAMPO_CRC);
 }
 
 void escreve_bytes_intervalo(unsigned char * src, unsigned char * dest, unsigned int byte_inicial, unsigned int posicao, unsigned int tamanho) {
     unsigned int bytes_andados = 0, pos = posicao;
-    
     if(posicao == 0) {
         bytes_andados--;
     }
 
-    printf("novo campo\n");
     for (size_t bits_lidos = 0; bits_lidos < tamanho; bits_lidos++, pos++) {
         if(pos % 8 == 0) {
             bytes_andados++;
