@@ -60,7 +60,7 @@ int server(int socket);
 /// @brief Aloca e inicializa os valores do pacote
 /// @param packet
 /// @return Retorna 1 se o pacote foi inicializado corretamente, 0 caso contrário 
-unsigned char * inicializa_pacote(char tipo, unsigned char sequencia, unsigned char * dados);
+unsigned char * inicializa_pacote(char tipo, uint8_t sequencia, unsigned char * dados);
 
 /// @brief Insere os dados no pacote e define o valor do tamanho da estrutura
 /// @param packet 
@@ -90,10 +90,6 @@ void print_pacote(unsigned char * packet);
 /// @param socket
 /// @return Retorna o pacote recebido
 unsigned char * recebe_pacote(int socket);
-
-/// @brief 
-/// @param packet 
-unsigned char * get_dados_pacote(unsigned char * packet);
 
 /// @brief tamanho do pacote (5 bits)
 /// @param packet 
@@ -159,12 +155,12 @@ void set_marcador(unsigned char * package, unsigned char marcador);
 /// @brief Seta o tamanho do pacote
 /// @param package pacote em que será escrito o tamanho
 /// @param tamanho o tamanho em si 
-void set_tamanho(unsigned char * package, unsigned char tamanho);
+void set_tamanho(unsigned char * package, uint8_t tamanho);
 
 /// @brief Seta o numero da sequencia do pacote
 /// @param package pacote em que será escrito a sequencia
 /// @param sequencia a sequencia em si
-void set_sequencia(unsigned char * package, unsigned char sequencia);
+void set_sequencia(unsigned char * package, uint8_t sequencia);
 
 /// @brief Seta o tipo do pacote
 /// @param package pacote em que será escrito o tipo
@@ -178,8 +174,7 @@ void set_dados(unsigned char * package, unsigned char * dados);
 
 /// @brief Seta o CRC, é necessário que o campo tamanho já esteja setado.
 /// @param package pacote em que será escrito o CRC
-/// @param tamanho o CRC em si
-void set_crc(unsigned char * package, unsigned char crc);
+void set_crc(unsigned char * package);
 
 /// @brief Função que escreve os bytes dados em src em um intervalo específico
 /// @param src De onde virá os dados
@@ -204,10 +199,10 @@ unsigned int get_sequencia_pacote(unsigned char * packet);
 /// @return Retorna a sequencia do pacote
 unsigned char get_tipo_pacote(unsigned char * packet);
 
-/// @brief Função que pega os dados do pacote
+/// @brief Função que gera uma cópia dos dados do pacote
 /// @param packet pacote que será lido
 /// @return Retorna os dados do pacote
-unsigned char * get_dados_pacote(unsigned char * packet);
+void * get_dados_pacote(unsigned char * packet);
 
 /// @brief Função que pega o CRC do pacote
 /// @param packet pacote que será lido

@@ -1,8 +1,13 @@
 #include "kermit.h"
+void print_byte(unsigned char byte, int fim, int comeco) {
+    for(int i = fim; i >= comeco; i--){
+        printf("%d", byte & (1<<i) ? 1 : 0);
+    }
+}
 
-unsigned char * inicializa_pacote(char tipo, unsigned char sequencia, unsigned char * dados) {
+unsigned char * inicializa_pacote(char tipo, uint8_t sequencia, unsigned char * dados) {
     unsigned char * packet = NULL;
-    unsigned int tamanho_dados = strnlen((char *)dados, TAM_CAMPO_DADOS);
+    uint8_t tamanho_dados = (uint8_t)strnlen((char *)dados, TAM_CAMPO_DADOS);
 
     if(!(packet = calloc((OFFSET_DADOS+TAM_CAMPO_CRC) / 8 + tamanho_dados, 1))) {
         return NULL;
@@ -13,7 +18,7 @@ unsigned char * inicializa_pacote(char tipo, unsigned char sequencia, unsigned c
     set_sequencia(packet, sequencia);
     set_tipo(packet, tipo);
     set_dados(packet, dados);
-    set_crc(packet, 0);
+    set_crc(packet);
 
     return packet;
 }
@@ -64,52 +69,41 @@ unsigned char * destroi_pacote(unsigned char * packet) {
 }
 
 void print_pacote(unsigned char * packet) {
-    // printf("Marcador: %d\n", (unsigned int)get_marcador_pacote(packet));
-    // printf("Tamanho: %d\n", get_tamanho_pacote(packet));
-    // printf("Sequência: %d\n", get_sequencia_pacote(packet));
-    // printf("Tipo: %d\n", get_tipo_pacote(packet));
-    // unsigned char * dados = get_dados_pacote(packet);
-    // printf("Dados: \n");
-    // for (int index = 0; index < (int)get_tamanho_pacote(packet); index++) {
-    //     printf("%c", dados[index]);
-    // }
-    // printf("\n");
+    int byte = 0;
+    unsigned char * dados = NULL;
+    printf("Marcador: %d\n", get_marcador_pacote(packet));
+    printf("Tamanho: %d\n", get_tamanho_pacote(packet));
+    printf("Sequência: %d\n", get_sequencia_pacote(packet));
+    printf("Tipo: %d\n", get_tipo_pacote(packet));
+    dados = get_dados_pacote(packet);
+    printf("Dados: %s\n", dados);
+    printf("CRC: %d\n", get_CRC(packet));
 
-    // printf("CRC: %d\n", get_CRC(packet));
-    // printf("Pacote em bits:\n");
-    int byte = 2, offset = 0;
-    // printf("pacote: ");
-    for(int i = 0; i < 8; i++){
-        printf("%d", packet[0] & (1<<i) ? 1 : 0);
-    }
+    printf("Pacote em bits:\n");
+    print_byte(packet[byte], 7, 0); // marcador
     printf(" ");
-    for(int i = 0; i < 6; i++){
-        printf("%d", packet[1] & (1<<i) ? 1: 0);
-    }
+    byte++;
+    print_byte(packet[byte], 7, 2); // 6 bits de tamanho
     printf(" ");
-    for(int i = 6; i < 8; i++){
-        printf("%d", packet[1] & (1<<i) ? 1: 0);
-    }
-    for(int i = 0; i < 3; i++){
-        printf("%d", packet[2] & (1<<i) ? 1: 0);
-    }
+    print_byte(packet[byte], 1, 0); // 2 bits de sequencia
+    byte++;
+    print_byte(packet[byte], 7, 5); // 3 bits de sequencia
     printf(" ");
-    for(int i = 3; i < 8; i++){
-        printf("%d", packet[2] & (1<<i) ? 1: 0);
-    }
+    print_byte(packet[byte], 4, 0); // 5 bits de tipo
     printf(" ");
-    for(int j = 0; j < get_tamanho_pacote(packet) * 8; offset++, j++){
-        if(offset % 8) {
-            byte++;
-            offset= 0;
-        }
-        printf("%d", packet[byte] & (1<<offset) ? 1: 0);
+    byte++;
+
+    // Dados
+    for(unsigned int i = 0; i < get_tamanho_pacote(packet); i++){
+        print_byte(dados[i], 7, 0);
+        printf(" ");
     }
-    printf(" ");
-    for(int i = 0; i < 8; i++){
-        printf("%d", packet[byte] & (1<<offset) ? 1: 0);
-    }
+
+    byte += get_tamanho_pacote(packet);
+    print_byte(packet[byte], 7, 0); // CRC
+
     printf("\n");
+    free(dados);
 }
 
 unsigned char * recebe_pacote(int socket) {
@@ -240,45 +234,42 @@ char *get_ethernet_interface_name() {
 
 unsigned char get_marcador_pacote(unsigned char * packet){
     int byte = OFFSET_MARCADOR/8; // o byte atual é este.
-    int posicao = OFFSET_MARCADOR % 8;   // a posicao dentro do byte é esta
 
-    return le_intervalo_bytes(packet, byte, posicao, TAM_CAMPO_MARCADOR)[0];
+    return packet[byte];
 }
 
 unsigned char get_tamanho_pacote(unsigned char * packet) {
     int byte = OFFSET_TAM / 8; // o byte atual é este.
-    int posicao = OFFSET_TAM % 8;   // a posicao dentro do byte é esta
 
-    return le_intervalo_bytes(packet, byte, posicao, TAM_CAMPO_TAM)[0];
+    return (packet[byte] & (0b11111100)) >> 2;
 }
 
 unsigned int get_sequencia_pacote(unsigned char * packet) {
     int byte = OFFSET_SEQ/8; // o byte atual é este.
-    int posicao = OFFSET_SEQ % 8;   // a posicao dentro do byte é esta
+    unsigned int sequencia = 0;
 
-    return le_intervalo_bytes(packet, byte, posicao, TAM_CAMPO_SEQ)[0];
+    sequencia = (packet[byte] & (0b11)) << 3;
+    sequencia |= (packet[byte + 1] & (0b11100000)) >> 5;
+    return sequencia;
 }
 
 unsigned char get_tipo_pacote(unsigned char * packet) {
     int byte = OFFSET_TIPO/8; // o byte atual é este.
-    int posicao = OFFSET_TIPO % 8;   // a posicao dentro do byte é esta
 
-    return le_intervalo_bytes(packet, byte, posicao, TAM_CAMPO_TIPO)[0];
+    return packet[byte] & (0b11111);
 }
 
 
-unsigned char * get_dados_pacote(unsigned char * packet) {
+void * get_dados_pacote(unsigned char * packet) {
     int byte = OFFSET_DADOS/8; // o byte atual é este.
-    int posicao = OFFSET_DADOS % 8;   // a posicao dentro do byte é esta
 
-    return le_intervalo_bytes(packet, byte, posicao, TAM_CAMPO_DADOS);
+    return strndup((char *)&packet[byte], get_tamanho_pacote(packet)); // duplica o campo de dados
 }
 
 unsigned char get_CRC(unsigned char * packet) {
-    unsigned int byte_inicial = OFFSET_DADOS + get_tamanho_pacote(packet) /8; // o byte atual é este.
-    unsigned int posicao = OFFSET_DADOS + get_tamanho_pacote(packet) % 8;   // a posicao dentro do byte é esta
-
-    return le_intervalo_bytes(packet, byte_inicial, posicao, TAM_CAMPO_CRC)[0];
+    unsigned int byte_inicial = (OFFSET_DADOS/8) + get_tamanho_pacote(packet); // o byte atual é este.
+    
+    return packet[byte_inicial];
 }
 
 unsigned char * le_intervalo_bytes(unsigned char * src, unsigned int inicio, unsigned int posicao, unsigned int quantidade){
@@ -309,43 +300,86 @@ unsigned char * le_intervalo_bytes(unsigned char * src, unsigned int inicio, uns
 }
 
 void set_marcador(unsigned char * package, unsigned char marcador){
-    escreve_bytes_intervalo(&marcador, package, OFFSET_MARCADOR/8, OFFSET_MARCADOR % 8, TAM_CAMPO_MARCADOR);
+    memcpy(&package[0], &marcador, 1);
 }
 
-void set_tamanho(unsigned char * package, unsigned char tamanho){
-    escreve_bytes_intervalo(&tamanho, package, OFFSET_TAM/8, OFFSET_TAM % 8, TAM_CAMPO_TAM);
+void set_tamanho(unsigned char * package, uint8_t tamanho){
+    unsigned int mask;
+    // 6 ultimos bits de package[OFFSET_TAM/8]
+    tamanho = tamanho % (1 << 6);        // garantir que o tamanho seja de 6 bits
+
+    mask = tamanho << 2;
+
+    // 6 ultimos bits de package[OFFSET_TAM/8]
+    package[OFFSET_TAM/8] |= mask;
 }
 
-void set_sequencia(unsigned char * package, unsigned char sequencia){
-    escreve_bytes_intervalo(&sequencia, package, OFFSET_SEQ/8, OFFSET_SEQ % 8, TAM_CAMPO_SEQ);
+void set_sequencia(unsigned char * package, uint8_t sequencia){
+    unsigned char mask;
+    sequencia %= (1 << 5); // garantir que a sequencia seja de 5 bits
+    mask = (sequencia & 0b11000) >> 3; 
+
+    // 2 primeiros bits de package[OFFSET_SEQ/8]
+    package[OFFSET_SEQ/8] |= mask;
+
+    // 3 primeiros bits de package[OFFSET_SEQ/8 + 1]
+    mask = (sequencia & 0b00111) << 5;
+    memcpy(&package[OFFSET_SEQ/8 + 1], &mask, 1);
 }
 
 void set_tipo(unsigned char * package, unsigned char tipo){
-    escreve_bytes_intervalo(&tipo, package, OFFSET_TIPO/8, OFFSET_TIPO % 8, TAM_CAMPO_TIPO);
+    // 5 ultimos bits de package[OFFSET_TIPO/8]
+    unsigned char mask = tipo % (1 << 5);
+    package[OFFSET_TIPO/8] |= (mask);
 }
 
 void set_dados(unsigned char * package, unsigned char * dados){
-    escreve_bytes_intervalo(dados, package, OFFSET_DADOS/8, OFFSET_DADOS % 8, strlen((char *)dados) * 8);
+    memcpy(&package[OFFSET_DADOS/8], dados, get_tamanho_pacote(package));
 }
 
-void set_crc(unsigned char * package, unsigned char crc){
-    unsigned int tamanho_pacote = (int)get_tamanho_pacote(package);
-    escreve_bytes_intervalo(&crc, package, (OFFSET_DADOS + tamanho_pacote) / 8, (OFFSET_DADOS + tamanho_pacote) % 8, TAM_CAMPO_CRC);
+void set_crc(unsigned char * package){
+    unsigned int codigo_crc = crc(package);
+
+    memcpy(&package[OFFSET_DADOS/8 + get_tamanho_pacote(package)], &codigo_crc, 1);
 }
+
 
 void escreve_bytes_intervalo(unsigned char * src, unsigned char * dest, unsigned int byte_inicial, unsigned int posicao, unsigned int tamanho) {
-    unsigned int bytes_andados = 0, pos = posicao;
-    if(posicao == 0) {
-        bytes_andados--;
-    }
+    // unsigned int bits_src = 0, bits_dest = posicao + (byte_inicial * 8),
+    // shift_dest = bits_dest % 8, shift_src = tamanho % 8, bits_lidos = 0, byte_dest = byte_inicial;
 
-    for (size_t bits_lidos = 0; bits_lidos < tamanho; bits_lidos++, pos++) {
-        if(pos % 8 == 0) {
-            bytes_andados++;
-            pos = 0;
-        }
+    // printf("byte_inicial: %d\n", byte_inicial);
+    // printf("tamanho: %d\n", tamanho);
+    // printf("posicao: %d\n", posicao);
+    // // src[bits_src/8] <<= 8 - (bits_dest % 8);
+    // printf("\n");
+    
+    // printf("src:\n");
+    // print_byte(src[0]);
+        
+    // if(posicao != 0){
+    //     printf("src:\n");
+    //     src[0] <<= 8 - posicao + ;
+    //     print_byte(src[0]);
+    //     printf("\ndest: ");
+	// 	print_byte(dest[byte_dest]);
 
-        // dar um jeito de colocar o bit na posicao correta
-        dest[byte_inicial + bytes_andados] |= (src[bytes_andados] & (1 << pos));
-    }
+    //     for(int i = posicao; i <= 7; i++){
+    //         printf("\nsrc[0] & (1 << %d): ", i);
+    //         print_byte(src[0] & (1 << i));
+    //         printf("\n");
+    //         dest[byte_dest] |= (src[0] & (1 << i));
+    //     }
+	// 	printf("\ndest: ");
+	// 	print_byte(dest[byte_dest]);
+    //     bits_lidos = 8 - posicao;
+    //     byte_dest++;
+    // }
+
+    // // if(bits_lidos < tamanho){
+    // //     memcpy(&dest[byte_dest], &src[1], tamanho - (byte_dest - byte_inicial));
+    // // }
+	// printf("\n");
+
+    return;
 }
