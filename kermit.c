@@ -7,11 +7,17 @@ void print_byte(unsigned char byte, int fim, int comeco) {
 
 unsigned char * inicializa_pacote(char tipo, uint8_t sequencia, unsigned char * dados) {
     unsigned char * packet = NULL;
-    uint8_t tamanho_dados = (uint8_t)strnlen((char *)dados, TAM_CAMPO_DADOS);
+    uint8_t tamanho_dados = 0;
 
-    if(!(packet = calloc((OFFSET_DADOS+TAM_CAMPO_CRC) / 8 + tamanho_dados, 1))) {
+    #ifdef DEBUG
+        printf("Inicializando pacote\n");
+    #endif
+    if(dados != NULL) 
+        tamanho_dados = strnlen((char *)dados, TAM_CAMPO_DADOS);
+
+    if(!(packet = calloc((OFFSET_DADOS+TAM_CAMPO_CRC) / 8 + tamanho_dados, 1))) 
         return NULL;
-    }
+
 
     set_marcador(packet, MARCADOR_INICIO);
     set_tamanho(packet, tamanho_dados);
@@ -20,6 +26,10 @@ unsigned char * inicializa_pacote(char tipo, uint8_t sequencia, unsigned char * 
     set_dados(packet, dados);
     set_crc(packet);
 
+    #ifdef DEBUG
+        printf("\n\nPacote inicializado\n");
+        print_pacote(packet);
+    #endif
     return packet;
 }
 
@@ -108,24 +118,28 @@ void print_pacote(unsigned char * packet) {
 
 unsigned char * recebe_pacote(int socket) {
     unsigned char * buffer = (unsigned char *) malloc(TAM_PACOTE);
-    int buffer_length;
+    int buffer_length = 0, crc_valor = 0;
 
     buffer_length = recv(socket, buffer, TAM_PACOTE, 0);
 	if (buffer_length == -1 || get_marcador_pacote(buffer) != MARCADOR_INICIO) {
 	    return NULL;
 	}
     #ifdef DEBUG
-        printf("Pacote recebido\n");
+        printf("\n\nPacote recebido\n");
+        print_pacote(buffer);
     #endif
-    // packet = converte_bytes_para_pacote(buffer);
 
-    /*
-        Analisa CRC
-        Errado?
-            envia_pacote(NACK)
-            return NULL
-    */
+    // Analise CRC
+    crc_valor = crc(buffer, get_tamanho_pacote(buffer)+3);
+    if(crc_valor != 0) {
+        fprintf(stderr, "Erro no CRC\n");
+        printf("CRC: %d\n", crc_valor);
+        return NULL;
+    }
 
+    #ifdef DEBUG
+        printf("CRC OK\n\n\n");
+    #endif
 	return buffer;
 }
 
@@ -140,32 +154,23 @@ int envia_pacote(unsigned char * packet, int socket) {
 unsigned char * stop_n_wait(unsigned char * packet, int socket) {
     unsigned char * resposta = NULL;
 
-    envia_pacote(packet, socket);
+    if(envia_pacote(packet, socket) < 0) return NULL;
     while((resposta = recebe_pacote(socket)) == NULL);
     
     return resposta;
 }
 
-unsigned char crc(unsigned char *packet) {
-    unsigned char gerador = 0x87; // Gerador polinomial
+unsigned char crc(unsigned char *packet, int tamanho) {
     unsigned char crc = 0x00;     // Valor inicial do CRC
-    unsigned char data[get_tamanho_pacote(packet) + 3]; // Dados do pacote
+    unsigned char mensagem[tamanho], * dados = NULL; // Dados do pacote
 
     // Preparando os dados para o cálculo do CRC
-    data[0] = get_tamanho_pacote(packet);
-    data[1] = get_sequencia_pacote(packet);
-    data[2] = get_tipo_pacote(packet);
-    memcpy(&data[3], get_dados_pacote(packet), get_tamanho_pacote(packet));
+    memcpy(&mensagem, &packet[OFFSET_TAM / 8], tamanho);
 
-    // Calculo do CRC-8
-    for (int i = 0; i < data[0] + 3; i++) {
-        crc ^= data[i]; // XOR byte a byte
-        for (int j = 0; j < 8; j++) { // Processa cada bit
-            if (crc & 0x80) crc = (crc << 1) ^ gerador; // Shift e XOR com o gerador
-            else crc <<= 1; // Apenas shift se não houver bit mais significativo
-        }
-    }
+    // Calculando o CRC
+    crc = divisao_mod_2(mensagem, tamanho);
 
+    free(dados);
     return crc;
 }
 
@@ -178,7 +183,6 @@ int cria_envia_pck(char tipo, char sequencia, char * dados, int socket) {
     // tamanho = tamamnho do campo de dados
     unsigned char * packet = inicializa_pacote(tipo, 0, (unsigned char *)dados);
     int retorno = 1;
-    insere_dados_pacote(packet, dados, strlen(dados));
 
     if(!envia_pacote(packet, socket)) {
         fprintf(stderr, "Erro ao enviar pacote\n");
@@ -262,8 +266,15 @@ unsigned char get_tipo_pacote(unsigned char * packet) {
 
 void * get_dados_pacote(unsigned char * packet) {
     int byte = OFFSET_DADOS/8; // o byte atual é este.
+    void * dados = NULL;
+    if (packet == NULL) {
+        return NULL;
+    }
+    if((dados = strndup((char *)&packet[byte], get_tamanho_pacote(packet))) == NULL){   // duplica o campo de dados
+        return NULL;
+    }
 
-    return strndup((char *)&packet[byte], get_tamanho_pacote(packet)); // duplica o campo de dados
+    return dados;
 }
 
 unsigned char get_CRC(unsigned char * packet) {
@@ -305,12 +316,11 @@ void set_marcador(unsigned char * package, unsigned char marcador){
 
 void set_tamanho(unsigned char * package, uint8_t tamanho){
     unsigned int mask;
-    // 6 ultimos bits de package[OFFSET_TAM/8]
     tamanho = tamanho % (1 << 6);        // garantir que o tamanho seja de 6 bits
 
+    // 6 primeiros bits de package[OFFSET_TAM/8]
     mask = tamanho << 2;
 
-    // 6 ultimos bits de package[OFFSET_TAM/8]
     package[OFFSET_TAM/8] |= mask;
 }
 
@@ -322,7 +332,7 @@ void set_sequencia(unsigned char * package, uint8_t sequencia){
     // 2 primeiros bits de package[OFFSET_SEQ/8]
     package[OFFSET_SEQ/8] |= mask;
 
-    // 3 primeiros bits de package[OFFSET_SEQ/8 + 1]
+    // 3 ultimos bits de package[OFFSET_SEQ/8 + 1]
     mask = (sequencia & 0b00111) << 5;
     memcpy(&package[OFFSET_SEQ/8 + 1], &mask, 1);
 }
@@ -338,7 +348,7 @@ void set_dados(unsigned char * package, unsigned char * dados){
 }
 
 void set_crc(unsigned char * package){
-    unsigned int codigo_crc = crc(package);
+    unsigned int codigo_crc = crc(package, get_tamanho_pacote(package) + 2);
 
     memcpy(&package[OFFSET_DADOS/8 + get_tamanho_pacote(package)], &codigo_crc, 1);
 }
@@ -382,4 +392,25 @@ void escreve_bytes_intervalo(unsigned char * src, unsigned char * dest, unsigned
 	// printf("\n");
 
     return;
+}
+
+unsigned char divisao_mod_2(unsigned char *dividendo, unsigned int tamanho_dividendo){
+    unsigned short divisor = DIVISOR_CRC; // será sempre o mesmo
+    unsigned short resto = 0;
+
+    // para cada byte do dividendo, realiza a divisão
+    for(int i = 0; i < tamanho_dividendo; i++){
+        resto ^= dividendo[i]; // faz o xor do byte do dividendo com o resto
+
+        // para cada bit do byte, realiza a divisão
+        for(int j = 0; j < 8; j++){
+            // se o bit mais significativo do resto for 1, faz o xor com o divisor
+            if(resto & (1<<7)) resto ^= divisor;
+
+            resto = resto << 1; // shifta o resto para a esquerda
+        }
+
+    }
+
+    return resto;
 }

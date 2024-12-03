@@ -19,26 +19,30 @@ int recebe_tamanho(FILE * arquivo, int socket);
 int backup(unsigned char * packet, int socket);
 
 int backup(unsigned char * packet, int socket) {
-    FILE * arquivo = fopen((char *) get_dados_pacote(packet), "w");
+    FILE * arquivo = fopen((char *) "mensagem1", "w");
     unsigned char * pacote;
 
     // Verifica se o arquivo foi aberto corretamente
     if (arquivo != NULL) {
+        #ifdef DEBUG
+            printf("Arquivo aberto com sucesso\n");
+        #endif
         pacote = inicializa_pacote(OK, 0, NULL);
     } else {
         pacote = inicializa_pacote(ERRO, 0, (unsigned char *) MSG_ERR_ACESSO);
         insere_dados_pacote(packet, (char *) MSG_ERR_ACESSO, 1);
     }
      
-    if(!envia_pacote(pacote, socket)) {
+    if(envia_pacote(pacote, socket) < 0) {
         fprintf(stderr, "server_backup: Erro ao enviar pacote\n");
         return 0;
     }
 
+    destroi_pacote(pacote);
     // Se o arquivo foi aberto corretamente, inicia o fluxo de dados
     if (arquivo != NULL) {
         if(recebe_tamanho(arquivo, socket)){
-            inicia_fluxo_dados(arquivo, socket);
+            // inicia_fluxo_dados(arquivo, socket);
             return 1;
         } else 
             return 0;
@@ -47,14 +51,23 @@ int backup(unsigned char * packet, int socket) {
 }
 
 int recebe_tamanho(FILE * arquivo, int socket) {
-    char * data = NULL;
-    unsigned long long espaco;
+    uint64_t data = 0, espaco = 0;
     unsigned char * recebido_cliente = NULL;
+    void * raw_data = NULL;
     struct statvfs fs;
 
     recebido_cliente = recebe_pacote(socket); // espera o cliente enviar o tamanho do arquivo
 
-    data = (char *) get_dados_pacote(recebido_cliente);
+    // este conversor de tamanho deu uma dor de cabeça...
+    // mas é devido ao tamanho diferente de bytes que pode vir do cliente
+    raw_data = get_dados_pacote(recebido_cliente);
+	for(int i = 0; i < get_tamanho_pacote(recebido_cliente); ++i) {
+		data |= ((uint64_t)((uint8_t *)raw_data)[i] << (i * 8));
+	}
+
+    #ifdef DEBUG
+        printf("\nRecebido o arquivo de tamanho %lu\n", data);
+    #endif
 
     // Obtém informações sobre o sistema de arquivos
     if (statvfs("/", &fs) == -1) {
@@ -71,7 +84,7 @@ int recebe_tamanho(FILE * arquivo, int socket) {
         recebido_cliente = recebe_pacote(socket);
     }
 
-    if (espaco < atoi(data)) { // Verifica se há espaço suficiente
+    if (espaco < data) { // Verifica se há espaço suficiente
         cria_envia_pck(ERRO, 0, (char *) MSG_ERR_ESPACO, socket);
         fprintf(stderr, "server_backup: Espaço insuficiente\n");
         return 0;
@@ -126,12 +139,6 @@ void inicia_fluxo_dados(FILE * arquivo, int socket) {
 }
 
 void trata_pacote(unsigned char * packet, int socket) {
-    /*
-        Analisa CRC
-        Se erro:
-            envia_pacote(NACK);
-    */
-
     switch (get_tipo_pacote(packet)) {
     case BACKUP:
         backup(packet, socket);

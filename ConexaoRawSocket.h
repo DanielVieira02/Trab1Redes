@@ -12,5 +12,8 @@
 #include <stdio.h>
 #include <arpa/inet.h>
 
+#define IP_A "127.0.0.1"
+#define IP_B "127.0.0.2"
 int ConexaoRawSocket(char * device);
+int conexaoDebug(char * device, char * ip_destino);
 #endif

@@ -64,7 +64,7 @@ kermit_protocol_state * tamanho_client(unsigned char * resposta, void * dados, i
 void backup_client(FILE *dados, char *nome_arq, int socket) {
     FILE* arquivo = dados;
     unsigned char *recebido = NULL, *enviado = NULL;
-    long tamanho = 0;
+    uint64_t tamanho = 0;
 
     // cria um pacote com o nome do arquivo no campo de dados
     enviado = inicializa_pacote(BACKUP, 0, (unsigned char *)nome_arq);
@@ -78,14 +78,16 @@ void backup_client(FILE *dados, char *nome_arq, int socket) {
 
     switch (get_tipo_pacote(recebido)) {
         case OK:
-            unsigned char * packet = inicializa_pacote(TAMANHO, 0, NULL);
+            #ifdef DEBUG
+                printf("Sinal OK recebido do servidor\n");
+            #endif
+            enviado = inicializa_pacote(TAMANHO, 0, (unsigned char *)&tamanho);
             
-            // Tamanho do campo de dados, 8x8 bits
-            set_tamanho(packet, (unsigned int) sizeof(long) * 8);
-            set_dados(packet, (unsigned char *) &tamanho); // Tamanho do arquivo
-
-            recebido = stop_n_wait(packet, socket); // Envia e espera o pacote ack
-
+            // Tamanho do campo de dados será de 8 bytes
+            destroi_pacote(recebido);
+            recebido = stop_n_wait(enviado, socket); // Envia e espera o pacote ack
+            destroi_pacote(enviado);
+            destroi_pacote(recebido);
             #ifdef DEBUG
                 printf("Pacote recebido\n");
             #endif

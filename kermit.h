@@ -19,6 +19,8 @@
 #include <sys/statvfs.h>
 #include <ifaddrs.h>
 
+#define _FILE_OFFSET_BITS 64
+
 #define MARCADOR_INICIO 0b01111110
 
 #define ACK                     0b00000
@@ -54,6 +56,8 @@
 #define OFFSET_DADOS            24
 #define OFFSET_CRC              88
 
+#define DIVISOR_CRC             0x119
+
 int client(int socket);
 int server(int socket);
 
@@ -88,7 +92,7 @@ void print_pacote(unsigned char * packet);
 
 /// @brief Recebe o pacote do socket
 /// @param socket
-/// @return Retorna o pacote recebido
+/// @return Retorna o pacote recebido, NULL se ocorrer erro no CRC ou timeout
 unsigned char * recebe_pacote(int socket);
 
 /// @brief tamanho do pacote (5 bits)
@@ -136,7 +140,7 @@ unsigned char * stop_n_wait(unsigned char * packet, int socket);
 int envia_pacote(unsigned char * packet, int socket);
 
 //TODO: Definir o CRC porque eu ainda não entendi pra que isso serve
-unsigned char crc(unsigned char * packet);
+unsigned char crc(unsigned char * packet, int tamanho);
 
 char *get_ethernet_interface_name();
 
@@ -209,5 +213,8 @@ void * get_dados_pacote(unsigned char * packet);
 /// @return Retorna o CRC do pacote
 unsigned char get_CRC(unsigned char * packet);
 
-void little_to_big_endian(unsigned char *data, size_t size);
+/// @brief Função que realiza a divisão do pacote pelo polinômio gerador, uma divisão módulo 2
+/// @param dividendo valor que será dividido
+/// @param tamanho_dividendo quantidade de bytes do dividendo
+unsigned char divisao_mod_2(unsigned char *dividendo, unsigned int tamanho_dividendo);
 #endif

@@ -7,6 +7,9 @@ TARGET  = main                  #Executavel
 #Regra default (primeira regra)
 all: $(TARGET)
 
+lo: CCFLAGS += -DLOOP
+lo: debug
+
 debug: CCFLAGS += -DDEBUG
 debug: all
 
