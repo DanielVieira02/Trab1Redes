@@ -4,13 +4,13 @@
 /// @param arquivo arquivo que será escrito
 /// @param socket socket que será utilizado
 /// @return sem retorno
-void inicia_fluxo_dados(FILE * arquivo, int socket);
+int inicia_fluxo_dados(FILE * arquivo, int socket);
 
 /// @brief Recebe o tamanho do arquivo e verifica se há espaço suficiente para armazená-lo
 /// @param arquivo arquivo que será escrito
 /// @param socket socket que será utilizado
-/// @return retorna 1 se houver espaço suficiente, 0 caso contrário
-int recebe_tamanho(FILE * arquivo, int socket);
+/// @return retorna o tamanho se houver espaço suficiente, -1 caso contrário
+uint64_t recebe_tamanho(FILE * arquivo, int socket);
 
 /// @brief Realiza o backup do arquivo
 /// @param packet pacote com o nome do arquivo
@@ -20,17 +20,18 @@ int backup(unsigned char * packet, int socket);
 
 int backup(unsigned char * packet, int socket) {
     FILE * arquivo = fopen((char *) "mensagem1", "w");
-    unsigned char * pacote;
+    unsigned char * pacote = NULL;
+    uint64_t tamanho = 0;
 
     // Verifica se o arquivo foi aberto corretamente
     if (arquivo != NULL) {
         #ifdef DEBUG
             printf("Arquivo aberto com sucesso\n");
         #endif
-        pacote = inicializa_pacote(OK, 0, NULL);
+        pacote = inicializa_pacote(OK, 0, NULL, 0);
     } else {
-        pacote = inicializa_pacote(ERRO, 0, (unsigned char *) MSG_ERR_ACESSO);
-        insere_dados_pacote(packet, (char *) MSG_ERR_ACESSO, 1);
+        pacote = inicializa_pacote(ERRO, 0, (unsigned char *) MSG_ERR_ACESSO, 1);
+        insere_dados_pacote(pacote, (char *) MSG_ERR_ACESSO, 1);
     }
      
     if(envia_pacote(pacote, socket) < 0) {
@@ -38,25 +39,38 @@ int backup(unsigned char * packet, int socket) {
         return 0;
     }
 
-    destroi_pacote(pacote);
+    #ifdef DEBUG
+        printf("Pacote enviado\n");
+    #endif
     // Se o arquivo foi aberto corretamente, inicia o fluxo de dados
     if (arquivo != NULL) {
-        if(recebe_tamanho(arquivo, socket)){
-            // inicia_fluxo_dados(arquivo, socket);
-            return 1;
-        } else 
+        while((tamanho = recebe_tamanho(arquivo, socket)) < 0){
+            fprintf(stderr, "server_backup: Erro ao receber o tamanho do arquivo\n");
+        }
+        if(inicia_fluxo_dados(arquivo, socket)) {
+            fprintf(stderr, "server_backup: Erro durante o fluxo de dados\n");
             return 0;
+        }
+        return 1;
     }
     return 0;
 }
 
-int recebe_tamanho(FILE * arquivo, int socket) {
+uint64_t recebe_tamanho(FILE * arquivo, int socket) {
     uint64_t data = 0, espaco = 0;
     unsigned char * recebido_cliente = NULL;
     void * raw_data = NULL;
     struct statvfs fs;
 
-    recebido_cliente = recebe_pacote(socket); // espera o cliente enviar o tamanho do arquivo
+    // espera o cliente enviar o tamanho do arquivo
+    while((recebido_cliente = recebe_pacote(socket)) == NULL);
+
+    // Enquanto o pacote recebido não é do tipo correto
+    while(get_tipo_pacote(recebido_cliente) != TAMANHO){
+        envia_nack(socket);
+        destroi_pacote(recebido_cliente);
+        recebido_cliente = recebe_pacote(socket);
+    }
 
     // este conversor de tamanho deu uma dor de cabeça...
     // mas é devido ao tamanho diferente de bytes que pode vir do cliente
@@ -76,66 +90,79 @@ int recebe_tamanho(FILE * arquivo, int socket) {
     }
 
     espaco = fs.f_bsize * fs.f_bavail;  // Calcula espaço disponível em bytes
-    
-    // Enquanto o pacote recebido não é do tipo correto
-    while(get_tipo_pacote(recebido_cliente) != TAMANHO){
-        envia_nack(socket);
-        destroi_pacote(recebido_cliente);
-        recebido_cliente = recebe_pacote(socket);
-    }
 
     if (espaco < data) { // Verifica se há espaço suficiente
-        cria_envia_pck(ERRO, 0, (char *) MSG_ERR_ESPACO, socket);
+        cria_envia_pck(ERRO, 0, (char *) MSG_ERR_ESPACO, socket, 1);
         fprintf(stderr, "server_backup: Espaço insuficiente\n");
         return 0;
     }
 
-    cria_envia_pck(OK, 0, NULL, socket);
-    return 1;
+    #ifdef DEBUG
+        printf("Espaço suficiente\n");
+    #endif
+    cria_envia_pck(OK, 0, NULL, socket, 0);
+    // liberando o pacote
+    destroi_pacote(recebido_cliente);
+    return data;
 }
 
-void inicia_fluxo_dados(FILE * arquivo, int socket) {
-    unsigned char * recebido_cliente = NULL;
-    int tipo_cliente = 0, sequencia = 0;
+int inicia_fluxo_dados(FILE * arquivo, int socket) {
+    unsigned char * recebido = NULL;
+    uint64_t sequencia = 0;
 
-    recebido_cliente = recebe_pacote(socket);
-    tipo_cliente =  get_tipo_pacote(recebido_cliente);
-
-    // Enquanto o pacote recebido não é do tipo correto
-    while (tipo_cliente != DADOS) {
-        insere_envia_pck(recebido_cliente, (char *) NACK, 1, socket);
-
-        // Destroi o pacote recebido e espera o próximo
-        destroi_pacote(recebido_cliente);
-        recebido_cliente = recebe_pacote(socket);
+    #ifdef DEBUG
+        printf("Iniciando o fluxo de dados\n");
+    #endif
+    if(!(recebido = recebe_pacote(socket))) {
+        fprintf(stderr, "server_backup: Erro ao receber primeiro pacote no fluxo de dados\n");
+        return 0;
     }
-
+    #ifdef DEBUG
+        printf("Recebido o primeiro pacote\n");
+    #endif
     // Enquanto não for o fim dos dados
-    while(tipo_cliente == DADOS && tipo_cliente != FIM_DADOS) { 
+    while(get_tipo_pacote(recebido) != FIM_DADOS) { 
         // Verifica se o pacote recebido é do tipo correto
-        if(get_sequencia_pacote(recebido_cliente) != sequencia){
-            cria_envia_pck(ERRO, sequencia, (char *) MSG_ERR_SEQUENCIA, socket);
+        while(get_tipo_pacote(recebido) != DADOS){
+            envia_nack(socket);
+            destroi_pacote(recebido);
+            recebido = recebe_pacote(socket);
+        }
 
-            // Destroi o pacote recebido e espera o próximo
-            destroi_pacote(recebido_cliente);
-            recebido_cliente = recebe_pacote(socket);
-            continue; // Pula para a próxima iteração, com o pacote atualizado
+        // Verifica se o pacote recebido é da sequencia esperada
+        while(get_sequencia_pacote(recebido) != sequencia) {
+            envia_nack(socket);
+            destroi_pacote(recebido);
+            recebido = recebe_pacote(socket);
         }
 
         // Se tudo der certo, escreve no arquivo
-        fwrite(get_dados_pacote(recebido_cliente), sizeof(char), get_tamanho_pacote(recebido_cliente), arquivo); 
+        if((fwrite(get_dados_pacote(recebido), sizeof(char), get_tamanho_pacote(recebido), arquivo)) == 0) {
+            fprintf(stderr, "server_backup: Erro ao escrever no arquivo\n");
+            return 0;
+        }
 
         // Envia ACK e recebe o próximo pacote
-        destroi_pacote(recebido_cliente);
+        destroi_pacote(recebido);
         envia_ack(socket);
+        recebido = recebe_pacote(socket);
         sequencia++;
+    }
+
+    // Verifica se o último pacote é do tipo correto
+    while(get_tipo_pacote(recebido) != FIM_DADOS) {
+        fprintf(stderr, "server_backup: Ultimo pacote não é do tipo FIM_DADOS\n");
+        envia_nack(socket);
+        destroi_pacote(recebido);
+        recebido = recebe_pacote(socket);
     }
 
     // como o ultimo pacote é vazio, não é necessário escrever no arquivo
     // manda apenas um ack
     envia_ack(socket);
-
+    destroi_pacote(recebido);       // libera o pacote
     fclose(arquivo);
+    return 1;
 }
 
 void trata_pacote(unsigned char * packet, int socket) {

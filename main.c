@@ -11,18 +11,13 @@ int main(int argc, char * argv[]) {
     int isClient = (atoi(argv[1]) == 1);
     char *nome_socket = get_ethernet_interface_name();
     printf("Socket: %s\n", nome_socket);
-    #ifndef LOOP
-        socket = ConexaoRawSocket(nome_socket);
+    #ifdef LOOP
+        nome_socket = "lo";
     #endif
+        socket = ConexaoRawSocket(nome_socket);
     if(isClient) {
-        #ifdef LOOP
-            socket = conexaoDebug(nome_socket, IP_A);
-        #endif
         client(socket);
     } else {
-        #ifdef LOOP
-            socket = conexaoDebug(nome_socket, IP_B);
-        #endif
         server(socket);
     }
 

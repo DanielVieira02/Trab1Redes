@@ -18,6 +18,8 @@
 #include <stdio.h>
 #include <sys/statvfs.h>
 #include <ifaddrs.h>
+#include <errno.h>
+#include <math.h>
 
 #define _FILE_OFFSET_BITS 64
 
@@ -46,8 +48,8 @@
 #define TAM_CAMPO_TIPO          5
 #define TAM_CAMPO_DADOS         64
 #define TAM_CAMPO_CRC           8
-#define TAM_PACOTE              96
-#define TAM_PACOTE_BYTES        12
+#define TAM_PACOTE              544
+#define TAM_PACOTE_BYTES        68
 
 #define OFFSET_MARCADOR         0
 #define OFFSET_TAM              8
@@ -64,7 +66,7 @@ int server(int socket);
 /// @brief Aloca e inicializa os valores do pacote
 /// @param packet
 /// @return Retorna 1 se o pacote foi inicializado corretamente, 0 caso contrário 
-unsigned char * inicializa_pacote(char tipo, uint8_t sequencia, unsigned char * dados);
+unsigned char * inicializa_pacote(char tipo, uint8_t sequencia, unsigned char * dados, int tamanho);
 
 /// @brief Insere os dados no pacote e define o valor do tamanho da estrutura
 /// @param packet 
@@ -115,7 +117,7 @@ int insere_envia_pck(unsigned char * packet, char * dados, int tamanho, int sock
 /// @param tamanho tamanho do campo de dados
 /// @param socket socket que será utilizado
 /// @return Retorna 1 se o pacote foi enviado, -1 por erro no envio (função send)
-int cria_envia_pck(char tipo, char sequencia, char * dados, int socket);
+int cria_envia_pck(char tipo, char sequencia, char * dados, int socket, int tamanho);
 
 /// @brief Envia o pacote ACK, que é um pacote vazio
 /// @param socket socket que será utilizado
@@ -174,7 +176,7 @@ void set_tipo(unsigned char * package, unsigned char tipo);
 /// @brief Seta os dados do pacote
 /// @param package pacote em que será escrito os dados
 /// @param dados os dados em si
-void set_dados(unsigned char * package, unsigned char * dados);
+void set_dados(unsigned char * package, void * dados);
 
 /// @brief Seta o CRC, é necessário que o campo tamanho já esteja setado.
 /// @param package pacote em que será escrito o CRC
@@ -217,4 +219,6 @@ unsigned char get_CRC(unsigned char * packet);
 /// @param dividendo valor que será dividido
 /// @param tamanho_dividendo quantidade de bytes do dividendo
 unsigned char divisao_mod_2(unsigned char *dividendo, unsigned int tamanho_dividendo);
+void print_byte(unsigned char byte, int fim, int comeco);
+
 #endif

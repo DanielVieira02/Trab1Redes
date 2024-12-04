@@ -5,22 +5,18 @@ void print_byte(unsigned char byte, int fim, int comeco) {
     }
 }
 
-unsigned char * inicializa_pacote(char tipo, uint8_t sequencia, unsigned char * dados) {
+unsigned char * inicializa_pacote(char tipo, uint8_t sequencia, unsigned char * dados, int tamanho) {
     unsigned char * packet = NULL;
-    uint8_t tamanho_dados = 0;
 
     #ifdef DEBUG
         printf("Inicializando pacote\n");
+        printf("tamanho do campo de dados: %d\n", tamanho);
     #endif
-    if(dados != NULL) 
-        tamanho_dados = strnlen((char *)dados, TAM_CAMPO_DADOS);
-
-    if(!(packet = calloc((OFFSET_DADOS+TAM_CAMPO_CRC) / 8 + tamanho_dados, 1))){
+    if(!(packet = calloc(1, (OFFSET_DADOS + TAM_CAMPO_CRC) / 8 + tamanho))) {
         return NULL;
-	}
-
-	set_marcador(packet, MARCADOR_INICIO);
-    set_tamanho(packet, tamanho_dados);
+    }
+    set_marcador(packet, MARCADOR_INICIO);
+    set_tamanho(packet, tamanho);
     set_sequencia(packet, sequencia);
     set_tipo(packet, tipo);
     set_dados(packet, dados);
@@ -118,17 +114,25 @@ void print_pacote(unsigned char * packet) {
 }
 
 unsigned char * recebe_pacote(int socket) {
-    unsigned char * buffer = (unsigned char *) calloc(TAM_PACOTE, 1);
+    unsigned char * buffer = (unsigned char *) calloc(1, TAM_PACOTE_BYTES);
     int buffer_length = 0, crc_valor = 0;
 
-    buffer_length = recv(socket, buffer, TAM_PACOTE, 0);
-	if (buffer_length == -1 || get_marcador_pacote(buffer) != MARCADOR_INICIO) {
+    if((buffer_length = recv(socket, buffer, TAM_PACOTE_BYTES, 0)) < 0) {
+        perror("Erro ao receber o pacote");
+        free(buffer);
+        return NULL;
+    }
+	if (get_marcador_pacote(buffer) != MARCADOR_INICIO) {
+        free(buffer);
 	    return NULL;
 	}
-    #ifdef DEBUG
+    #ifndef DEBUG
+        buffer = realloc(buffer, (OFFSET_DADOS + TAM_CAMPO_CRC) / 8 + get_tamanho_pacote(buffer));
+    #else
         printf("\n\nPacote recebido\n");
         print_pacote(buffer);
     #endif
+
 
     // Analise CRC
     crc_valor = crc(buffer, get_tamanho_pacote(buffer)+3);
@@ -149,14 +153,29 @@ size_t calcula_tamanho_pacote(unsigned char * packet) {
 }
 
 int envia_pacote(unsigned char * packet, int socket) {
-    int bytes_enviados = 0;
+    int bytes_enviados = calcula_tamanho_pacote(packet);
 
-    bytes_enviados = send(socket, packet, calcula_tamanho_pacote(packet), 0);
+    #ifdef DEBUG
+        printf("Tentando enviar %d bytes:\n", bytes_enviados);
+    #endif
 
-	printf("bytes enviados: %d\n", bytes_enviados);
+    if(bytes_enviados < 14) // 
+        bytes_enviados += (14 - bytes_enviados);
+
+    bytes_enviados = send(socket, packet, bytes_enviados, 0);
+
+    // Enviar o pacote
+    if (bytes_enviados == -1) {
+        perror("Erro ao enviar o pacote");
+        return -1;
+    }
+    #ifdef DEBUG
+        printf("Pacote de tamanho %u enviado. Bytes enviados: %d\n", bytes_enviados, bytes_enviados);
+    #endif
 
     return bytes_enviados;
 }
+
 
 unsigned char * stop_n_wait(unsigned char * packet, int socket) {
     unsigned char * resposta = NULL;
@@ -188,12 +207,17 @@ int insere_envia_pck(unsigned char * packet, char * dados, int tamanho, int sock
     return envia_pacote(packet, socket);
 }
 
-int cria_envia_pck(char tipo, char sequencia, char * dados, int socket) {
+int cria_envia_pck(char tipo, char sequencia, char * dados, int socket, int tamanho) {
     // tamanho = tamamnho do campo de dados
-    unsigned char * packet = inicializa_pacote(tipo, 0, (unsigned char *)dados);
+    unsigned char * packet = NULL;
     int retorno = 1;
 
-    if(!envia_pacote(packet, socket)) {
+    if(!dados)
+        packet = inicializa_pacote(tipo, 0, NULL, 0);
+    else 
+        packet = inicializa_pacote(tipo, sequencia, (unsigned char *)dados, tamanho);
+
+    if(envia_pacote(packet, socket) < 0) {
         fprintf(stderr, "Erro ao enviar pacote\n");
         retorno = -1;
     }
@@ -203,11 +227,11 @@ int cria_envia_pck(char tipo, char sequencia, char * dados, int socket) {
 }
 
 int envia_ack(int socket) {
-    return cria_envia_pck(ACK, 0, NULL, socket);
+    return cria_envia_pck(ACK, 0, NULL, socket, 0);
 }
 
 int envia_nack(int socket) {
-    return cria_envia_pck(NACK, 0, NULL, socket);
+    return cria_envia_pck(NACK, 0, NULL, socket, 0);
 }
 
 char *get_ethernet_interface_name() {
@@ -279,7 +303,7 @@ void * get_dados_pacote(unsigned char * packet) {
     if (packet == NULL) {
         return NULL;
     }
-    if((dados = strndup((char *)&packet[byte], get_tamanho_pacote(packet))) == NULL){   // duplica o campo de dados
+    if((dados = strndup((char *) (packet + byte), get_tamanho_pacote(packet))) == NULL){   // duplica o campo de dados
         return NULL;
     }
 
@@ -352,7 +376,7 @@ void set_tipo(unsigned char * package, unsigned char tipo){
     package[OFFSET_TIPO/8] |= (mask);
 }
 
-void set_dados(unsigned char * package, unsigned char * dados){
+void set_dados(unsigned char * package, void * dados){
     memcpy(&package[OFFSET_DADOS/8], dados, get_tamanho_pacote(package));
 }
 
