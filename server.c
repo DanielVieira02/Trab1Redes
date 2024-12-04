@@ -10,7 +10,7 @@ int inicia_fluxo_dados(FILE * arquivo, int socket);
 /// @param arquivo arquivo que será escrito
 /// @param socket socket que será utilizado
 /// @return retorna o tamanho se houver espaço suficiente, -1 caso contrário
-uint64_t recebe_tamanho(FILE * arquivo, int socket);
+uint64_t recebe_tamanho(int socket);
 
 /// @brief Realiza o backup do arquivo
 /// @param packet pacote com o nome do arquivo
@@ -44,7 +44,7 @@ int backup(unsigned char * packet, int socket) {
     #endif
     // Se o arquivo foi aberto corretamente, inicia o fluxo de dados
     if (arquivo != NULL) {
-        while((tamanho = recebe_tamanho(arquivo, socket)) < 0){
+        while((tamanho = recebe_tamanho(socket)) < 0){
             fprintf(stderr, "server_backup: Erro ao receber o tamanho do arquivo\n");
         }
         if(inicia_fluxo_dados(arquivo, socket)) {
@@ -56,7 +56,7 @@ int backup(unsigned char * packet, int socket) {
     return 0;
 }
 
-uint64_t recebe_tamanho(FILE * arquivo, int socket) {
+uint64_t recebe_tamanho(int socket) {
     uint64_t data = 0, espaco = 0;
     unsigned char * recebido_cliente = NULL;
     void * raw_data = NULL;

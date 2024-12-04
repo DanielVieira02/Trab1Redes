@@ -1,18 +1,18 @@
 #include "kermit.h"
-void print_byte(unsigned char byte, int fim, int comeco) {
+void print_byte(u_int64_t byte, int fim, int comeco) {
     for(int i = fim; i >= comeco; i--){
         printf("%d", byte & (1<<i) ? 1 : 0);
     }
 }
 
-unsigned char * inicializa_pacote(char tipo, uint8_t sequencia, unsigned char * dados, int tamanho) {
+unsigned char * inicializa_pacote(char tipo, uint8_t sequencia, void * dados, int tamanho) {
     unsigned char * packet = NULL;
 
     #ifdef DEBUG
         printf("Inicializando pacote\n");
         printf("tamanho do campo de dados: %d\n", tamanho);
     #endif
-    if(!(packet = calloc(1, (OFFSET_DADOS + TAM_CAMPO_CRC) / 8 + tamanho))) {
+    if(!(packet = calloc((OFFSET_DADOS + TAM_CAMPO_CRC) / 8 + tamanho, 1))) {
         return NULL;
     }
     set_marcador(packet, MARCADOR_INICIO);
@@ -155,12 +155,15 @@ size_t calcula_tamanho_pacote(unsigned char * packet) {
 int envia_pacote(unsigned char * packet, int socket) {
     int bytes_enviados = calcula_tamanho_pacote(packet);
 
+
+    if(bytes_enviados < 14) { 
+        bytes_enviados += (14 - bytes_enviados);
+        memset(&packet[bytes_enviados], 0, 14 - bytes_enviados);
+        packet = realloc(packet, 14);
+    }
     #ifdef DEBUG
         printf("Tentando enviar %d bytes:\n", bytes_enviados);
     #endif
-
-    if(bytes_enviados < 14) // 
-        bytes_enviados += (14 - bytes_enviados);
 
     bytes_enviados = send(socket, packet, bytes_enviados, 0);
 
@@ -299,16 +302,17 @@ unsigned char get_tipo_pacote(unsigned char * packet) {
 
 void * get_dados_pacote(unsigned char * packet) {
     int byte = OFFSET_DADOS/8; // o byte atual é este.
-    void * dados = NULL;
     if (packet == NULL) {
         return NULL;
     }
-    if((dados = strndup((char *) (packet + byte), get_tamanho_pacote(packet))) == NULL){   // duplica o campo de dados
+    void * dados = calloc(get_tamanho_pacote(packet), 1);
+    if((memcpy(dados, &packet[byte], get_tamanho_pacote(packet))) == NULL){   // duplica o campo de dados
         return NULL;
     }
-
+ 
     return dados;
 }
+
 
 unsigned char get_CRC(unsigned char * packet) {
     unsigned int byte_inicial = (OFFSET_DADOS/8) + get_tamanho_pacote(packet); // o byte atual é este.
@@ -378,12 +382,18 @@ void set_tipo(unsigned char * package, unsigned char tipo){
 
 void set_dados(unsigned char * package, void * dados){
     memcpy(&package[OFFSET_DADOS/8], dados, get_tamanho_pacote(package));
+    printf("\nDados: ");
+    print_byte(*(uint64_t *)&package[OFFSET_DADOS/8], 63, 0);
+    printf("\n");
+    printf("\nDados via get: ");
+    print_byte((uint64_t)get_dados_pacote(package), 63, 0);
+    printf("\n");
 }
 
 void set_crc(unsigned char * package){
     unsigned int codigo_crc = crc(package, get_tamanho_pacote(package) + 2);
-
     memcpy(&package[OFFSET_DADOS/8 + get_tamanho_pacote(package)], &codigo_crc, 1);
+    
 }
 
 

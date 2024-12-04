@@ -47,10 +47,11 @@ kermit_protocol_state * tamanho_client(unsigned char * resposta, void * dados, i
 void backup_client(FILE *dados, char *nome_arq, int socket) {
     FILE* arquivo = dados;
     unsigned char *recebido = NULL, *enviado = NULL;
-    uint64_t tamanho = 0, tipo = 0;
+    uint64_t * tamanho = calloc(1, sizeof(u_int64_t));
+    uint64_t tipo = 0;
 
     // cria um pacote com o nome do arquivo no campo de dados
-    enviado = inicializa_pacote(BACKUP, 0, (unsigned char *)nome_arq, strnlen(nome_arq, TAM_CAMPO_DADOS));
+    enviado = inicializa_pacote(BACKUP, 0, (unsigned char *)nome_arq, strnlen(nome_arq, TAM_CAMPO_DADOS) + 1);
     recebido = stop_n_wait(enviado, socket); // Envia e espera o pacote OK
 
     enviado = destroi_pacote(enviado);
@@ -58,7 +59,7 @@ void backup_client(FILE *dados, char *nome_arq, int socket) {
     recebido = destroi_pacote(recebido);
     // pega o tamanho do arquivo
     fseeko(arquivo, 0, SEEK_END);
-    tamanho = ftello(arquivo);
+    *tamanho = ftello(arquivo);
 
     rewind(arquivo); // volta o ponteiro pro inicio do arquivo
     switch (tipo) {
@@ -67,7 +68,7 @@ void backup_client(FILE *dados, char *nome_arq, int socket) {
                 printf("Sinal OK recebido do servidor\n");
                 printf("Enviando o tamanho do arquivo\n");
             #endif
-            if(!(enviado = inicializa_pacote(TAMANHO, 0, (unsigned char *)&tamanho, sizeof(uint64_t)))) {
+            if(!(enviado = inicializa_pacote(TAMANHO, 0, (void *)tamanho, sizeof(uint64_t)))) {
                 fprintf(stderr, "Erro ao inicializar o pacote\n");
                 return;
             }
@@ -76,7 +77,6 @@ void backup_client(FILE *dados, char *nome_arq, int socket) {
                 printf("Dados do pacote enviado: %ls\n", (unsigned int *)get_dados_pacote(enviado));
             #endif
             // Tamanho do campo de dados será de 8 bytes
-            destroi_pacote(recebido);
             recebido = stop_n_wait(enviado, socket); // Envia e espera o pacote ok
 
             // enquanto o pacote recebido não for do tipo correto
@@ -100,7 +100,7 @@ void backup_client(FILE *dados, char *nome_arq, int socket) {
             destroi_pacote(enviado);
             destroi_pacote(recebido);
             // recebido o tamanho, começa o fluxo de dados
-            inicia_envio_dados(arquivo, tamanho, socket);
+            inicia_envio_dados(arquivo, *tamanho, socket);
             #ifdef DEBUG
                 printf("Pacote recebido\n");
             #endif

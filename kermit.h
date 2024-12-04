@@ -66,7 +66,7 @@ int server(int socket);
 /// @brief Aloca e inicializa os valores do pacote
 /// @param packet
 /// @return Retorna 1 se o pacote foi inicializado corretamente, 0 caso contrário 
-unsigned char * inicializa_pacote(char tipo, uint8_t sequencia, unsigned char * dados, int tamanho);
+unsigned char * inicializa_pacote(char tipo, uint8_t sequencia, void * dados, int tamanho);
 
 /// @brief Insere os dados no pacote e define o valor do tamanho da estrutura
 /// @param packet 
@@ -219,6 +219,6 @@ unsigned char get_CRC(unsigned char * packet);
 /// @param dividendo valor que será dividido
 /// @param tamanho_dividendo quantidade de bytes do dividendo
 unsigned char divisao_mod_2(unsigned char *dividendo, unsigned int tamanho_dividendo);
-void print_byte(unsigned char byte, int fim, int comeco);
+void print_byte(uint64_t byte, int fim, int comeco);
 
 #endif
