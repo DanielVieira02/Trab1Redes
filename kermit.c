@@ -15,11 +15,11 @@ unsigned char * inicializa_pacote(char tipo, uint8_t sequencia, unsigned char * 
     if(dados != NULL) 
         tamanho_dados = strnlen((char *)dados, TAM_CAMPO_DADOS);
 
-    if(!(packet = calloc((OFFSET_DADOS+TAM_CAMPO_CRC) / 8 + tamanho_dados, 1))) 
+    if(!(packet = calloc((OFFSET_DADOS+TAM_CAMPO_CRC) / 8 + tamanho_dados, 1))){
         return NULL;
+	}
 
-
-    set_marcador(packet, MARCADOR_INICIO);
+	set_marcador(packet, MARCADOR_INICIO);
     set_tamanho(packet, tamanho_dados);
     set_sequencia(packet, sequencia);
     set_tipo(packet, tipo);
@@ -27,9 +27,10 @@ unsigned char * inicializa_pacote(char tipo, uint8_t sequencia, unsigned char * 
     set_crc(packet);
 
     #ifdef DEBUG
-        printf("\n\nPacote inicializado\n");
+		printf("\n\nPacote inicializado\n");
         print_pacote(packet);
     #endif
+
     return packet;
 }
 
@@ -117,7 +118,7 @@ void print_pacote(unsigned char * packet) {
 }
 
 unsigned char * recebe_pacote(int socket) {
-    unsigned char * buffer = (unsigned char *) malloc(TAM_PACOTE);
+    unsigned char * buffer = (unsigned char *) calloc(TAM_PACOTE, 1);
     int buffer_length = 0, crc_valor = 0;
 
     buffer_length = recv(socket, buffer, TAM_PACOTE, 0);
@@ -143,10 +144,16 @@ unsigned char * recebe_pacote(int socket) {
 	return buffer;
 }
 
+size_t calcula_tamanho_pacote(unsigned char * packet) {
+	return get_tamanho_pacote(packet) + ((OFFSET_DADOS+TAM_CAMPO_CRC) / 8);
+}
+
 int envia_pacote(unsigned char * packet, int socket) {
     int bytes_enviados = 0;
 
-    bytes_enviados = send(socket, packet, TAM_PACOTE, 0);
+    bytes_enviados = send(socket, packet, calcula_tamanho_pacote(packet), 0);
+
+	printf("bytes enviados: %d\n", bytes_enviados);
 
     return bytes_enviados;
 }
@@ -155,7 +162,9 @@ unsigned char * stop_n_wait(unsigned char * packet, int socket) {
     unsigned char * resposta = NULL;
 
     if(envia_pacote(packet, socket) < 0) return NULL;
-    while((resposta = recebe_pacote(socket)) == NULL);
+    while((resposta = recebe_pacote(socket)) == NULL) {
+		printf("esperando pacote...\n");
+	}
     
     return resposta;
 }
