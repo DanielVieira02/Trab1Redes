@@ -20,7 +20,7 @@
 #include <ifaddrs.h>
 #include <errno.h>
 #include <math.h>
-
+#include <inttypes.h>
 #define _FILE_OFFSET_BITS 64
 
 #define MARCADOR_INICIO 0b01111110
@@ -65,7 +65,7 @@ int server(int socket);
 
 /// @brief Aloca e inicializa os valores do pacote
 /// @param packet
-/// @return Retorna 1 se o pacote foi inicializado corretamente, 0 caso contrário 
+/// @return Retorna o pacote inicializado, caso contrário retorna NULL
 unsigned char * inicializa_pacote(char tipo, uint8_t sequencia, void * dados, int tamanho);
 
 /// @brief Insere os dados no pacote e define o valor do tamanho da estrutura
@@ -133,8 +133,8 @@ unsigned char * stop_n_wait(unsigned char * packet, int socket);
 /// @brief Envia um pacote
 /// @param packet pacote que será enviado
 /// @param socket socket que será utilizado
-/// @return Retorna 1 se o pacote foi enviado, -1 por erro no envio (função send)
-int envia_pacote(unsigned char ** packet, int socket);
+/// @return Retorna > 1 se o pacote foi enviado, -1 por erro no envio (função send)
+int envia_pacote(unsigned char * packet, int socket);
 
 //TODO: Definir o CRC porque eu ainda não entendi pra que isso serve
 unsigned char crc(unsigned char * packet, int tamanho);
@@ -214,6 +214,31 @@ unsigned char get_CRC(unsigned char * packet);
 /// @param dividendo valor que será dividido
 /// @param tamanho_dividendo quantidade de bytes do dividendo
 unsigned char divisao_mod_2(unsigned char *dividendo, unsigned int tamanho_dividendo);
+
 void print_byte(uint64_t byte, int fim, int comeco);
 
+/// @brief Função que recebe os dados via socket
+/// @param arquivo arquivo que será enviado
+/// @param tamanho tamanho do arquivo
+int recebe_fluxo_dados(FILE * arquivo, int socket);
+
+/// @brief Função que envia os dados via socket
+/// @param arquivo descritor do arquivo que será enviado
+/// @param tamanho tamanho do arquivo
+/// @param socket socket que será utilizado
+/// @return Retorna 1 se o envio foi realizado com sucesso, 0 caso contrário
+int envia_fluxo_dados(FILE * arquivo, uint64_t tamanho, int socket);
+
+/// @brief Função que ajusta e trunca o pacote, se necessário
+/// @param packet pacote que será ajustado
+/// @return Retorna 1 se o pacote foi ajustado, 0 caso contrário
+int ajusta_pacote(unsigned char ** packet);
+
+/// @brief Função que verifica se há memória suficiente para alocar um pacote
+/// @param tamanho tamanho do pacote
+/// @return Retorna 1 se houver memória suficiente, 0 caso contrário
+u_int64_t ha_memoria_suficiente(u_int64_t tamanho);
+
+
+size_t calcula_tamanho_pacote(unsigned char * packet);
 #endif
