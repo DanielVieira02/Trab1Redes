@@ -60,6 +60,12 @@
 
 #define DIVISOR_CRC             0x119
 #define MAX_DADOS               63
+
+#define ERRO_CRC                -1
+#define ERRO_ALLOC              -2
+#define ERRO_RECV               -3
+#define ERRO_MARCADOR           -4
+
 int client(int socket);
 int server(int socket);
 

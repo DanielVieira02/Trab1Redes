@@ -144,23 +144,24 @@ unsigned char * recebe_pacote(int socket) {
             destroi_pacote(packet);
             return NULL;
         }
+        packet = buffer;    // altera packet para o ponteiro realocado
     }
     
 
-    packet = buffer;    // altera packet para o ponteiro realocado
 
     #ifdef DEBUG
         printf("\n\nPacote recebido\n");
-        print_pacote(buffer);
+        print_pacote(packet);
     #endif
 
 
     // Analise CRC
-    crc_valor = crc(buffer, get_tamanho_pacote(buffer)+3);
+    crc_valor = crc(packet, get_tamanho_pacote(packet)+3);
     if(crc_valor != 0) {
         fprintf(stderr, "Erro no CRC\n");
         printf("CRC: %d\n", crc_valor);
         destroi_pacote(packet);
+        envia_nack(socket);
         return NULL;
     }
 
@@ -202,7 +203,7 @@ int envia_pacote(unsigned char * packet, int socket) {
 
 
 unsigned char * stop_n_wait(unsigned char * packet, int socket) {
-    
+
     unsigned char * resposta = NULL;
 
     // envia_pacote usa ponteiro de ponteiro pois pode haver realocações

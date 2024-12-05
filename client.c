@@ -242,6 +242,9 @@ int restaura_client(char *nomeArq, int socket) {
     // Envia e espera o pacote OK_TAMANHO
     do {
         recebido = stop_n_wait(enviado, socket);
+        #ifdef DEBUG
+            printf("Tipo do pacote é: %d", get_tipo_pacote(recebido));
+        #endif
     } while(get_tipo_pacote(recebido) != OK_TAMANHO);
 
     enviado = destroi_pacote(enviado);
@@ -287,5 +290,6 @@ int restaura_client(char *nomeArq, int socket) {
         return 0;
     }
 
+    fclose(arquivo);
     return 1;
 }
