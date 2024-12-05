@@ -24,6 +24,12 @@ kermit_protocol_state * tamanho_client(unsigned char * resposta, void * dados, i
 /// @return Retorna 1 se o backup foi realizado com sucesso, 0 caso contrário
 int backup_client(FILE* arquivo, char * nome_arq, int socket);
 
+/// @brief Função que restaura o arquivo presente no servidor
+/// @param nomeArq Nome do arquivo
+/// @param socket Socket que será utilizado
+/// @return Retorna 1 se o arquivo foi restaurado com sucesso, 0 caso contrário
+int restaura_client(char *nomeArq, int socket);
+
 kermit_protocol_state * fim_dados_client(unsigned char * resposta, void * dados, int socket) {
     return NULL;
 }
@@ -56,11 +62,25 @@ int backup_client(FILE *dados, char *nome_arq, int socket) {
     uint64_t tamanho = 0;
     int tipo = 0;
 
+    #ifdef DEBUG
+        printf("Começando o backup\n");
+    #endif
+
     // cria um pacote com o nome do arquivo no campo de dados
-    enviado = inicializa_pacote(BACKUP, 0, (unsigned char *)nome_arq, strnlen(nome_arq, TAM_CAMPO_DADOS) + 1);
+    if(!(enviado = inicializa_pacote(BACKUP, 0, (unsigned char *)nome_arq, strnlen(nome_arq, TAM_CAMPO_DADOS- 2) + 1))) {
+        fprintf(stderr, "Erro ao inicializar o pacote\n");
+        return 0;
+    }
+
     recebido = stop_n_wait(enviado, socket); // Envia e espera o pacote OK
+    while(get_tipo_pacote(recebido) != OK) {
+        recebido = destroi_pacote(recebido);    
+        recebido = stop_n_wait(enviado, socket);
+    }
 
     tipo = get_tipo_pacote(recebido);
+
+    enviado = destroi_pacote(enviado);
     recebido = destroi_pacote(recebido);
     // pega o tamanho do arquivo
     fseeko(arquivo, 0, SEEK_END);
@@ -89,6 +109,8 @@ int backup_client(FILE *dados, char *nome_arq, int socket) {
                 return 0;
             }
 
+            enviado = destroi_pacote(enviado);
+
             // enquanto o pacote recebido não for do tipo correto
             #ifdef DEBUG
                 printf("Verificando se o tipo do pacote é OK\n");
@@ -102,16 +124,19 @@ int backup_client(FILE *dados, char *nome_arq, int socket) {
                 if(tipo == ERRO) {
                     // seria necessario aqui uma função que printa a mensagem de erro respectiva pra cada codigo
                     fprintf(stderr, "backup_client: erro específico do servidor\n");
-                    destroi_pacote(enviado);
+                    enviado = destroi_pacote(enviado);
                     break;
                 }
                 destroi_pacote(recebido);
+                enviado = destroi_pacote(enviado);
                 recebido = stop_n_wait(enviado, socket);
+
             }
 
-            destroi_pacote(recebido);
+            enviado = destroi_pacote(enviado);
+            recebido = destroi_pacote(recebido);
             // recebido o tamanho, começa o fluxo de dados
-            if(!inicia_envio_dados(arquivo, tamanho, socket)) {
+            if(!envia_fluxo_dados(arquivo, tamanho, socket)) {
                 fprintf(stderr, "Erro ao enviar os dados\n");
                 return 0;
             }
@@ -159,11 +184,11 @@ int client(int socket) {
 
         while (getchar() != '\n');  // só pra tirar o \n do buffer
 
+        printf("Insira o nome do arquivo: \n");
+        ler_entrada(buffer);                
+
         switch(comando) {
             case 1:
-                printf("Insira o nome do arquivo: \n");
-                ler_entrada(buffer);                
-
                 if((arquivo = fopen(buffer, "r")) == NULL) {
                     perror("Erro ao abrir o arquivo");
                     break;
@@ -176,9 +201,15 @@ int client(int socket) {
                 }
 
                 fclose(arquivo);
+                executar = 0;
                 break;
             case 2:
-                printf("TODO Restaura, mano\n");
+                if(!restaura_client(buffer, socket)){
+                    fprintf(stderr, "Erro ao realizar o backup\n");
+                } else {
+                    printf("Backup realizado com sucesso\n");
+                }
+                // printf("TODO Restaura, mano\n");
                 break;
             case 3:
                 printf("TODO Verifica, mano\n");
@@ -194,73 +225,66 @@ int client(int socket) {
     return 0;
 }
 
-int inicia_envio_dados(FILE * arquivo, uint64_t tamanho, int socket) {
-    unsigned char * recebido = NULL, * enviado = NULL, * buffer = NULL;
-    uint64_t chunks = tamanho / MAX_DADOS; // 63 bytes por pacote
-    buffer = calloc(1, MAX_DADOS);
+int restaura_client(char *nomeArq, int socket) {
+    FILE *arquivo = NULL;
+    unsigned char *recebido = NULL, *enviado = NULL;
 
-    // Envia o pacote de dados
-    for(int seq = 0; seq < chunks; seq++) {
-        #ifdef DEBUG
-            printf("Enviando o pacote %u\n", seq);
-        #endif
-        // lê 64 bytes do arquivo
-        if(fread(buffer, 1, MAX_DADOS, arquivo) == 0){
-            fprintf(stderr, "Erro ao ler o arquivo\n");
-            free(buffer);
-            return 0;    
-        }
-        // cria o pacote de dados
-        if(!(enviado = inicializa_pacote(DADOS, seq % (1 << 5), buffer, MAX_DADOS))) {
-            fprintf(stderr, "Erro ao inicializar o pacote\n");
-            free(buffer);
-            return 0;
-        }
+    #ifdef DEBUG
+        printf("Iniciando a restauração do arquivo\n");
+    #endif
 
-        recebido = stop_n_wait(enviado, socket); // Envia e espera o pacote ACK
-
-        // enquanto der erro no CRC, timeout ou o pacote recebido não for do tipo correto
-        while(recebido == NULL || get_tipo_pacote(recebido) != ACK) {
-            enviado = inicializa_pacote(DADOS, seq, buffer, MAX_DADOS);
-            recebido = stop_n_wait(enviado, socket);
-        }
-
-        // destroi os pacotes
-        destroi_pacote(recebido);
+    // envia um pacote pedindo para restaurar o arquivo
+    if(!(enviado = inicializa_pacote(RESTAURA, 0, (unsigned char *)nomeArq, strnlen(nomeArq, TAM_CAMPO_DADOS - 2) + 1))) {
+        fprintf(stderr, "Erro ao inicializar o pacote\n");  
+        return 0;
     }
 
-    // escreve o resto dos dados
-    if(tamanho % MAX_DADOS != 0) {
-        #ifdef DEBUG
-            printf("Resto dos dados\n");
-        #endif
-        if(!fread(buffer, 1, tamanho % MAX_DADOS, arquivo)){
-            fprintf(stderr, "Erro ao ler o arquivo\n");
-            return 0;
-        }
-
-        if(!(enviado = inicializa_pacote(DADOS, chunks % (1 << 5), buffer, tamanho % MAX_DADOS))) {
-            fprintf(stderr, "Erro ao inicializar o pacote\n");
-            destroi_pacote(enviado);
-            free(buffer);
-            return 0;
-        }
-
+    // Envia e espera o pacote OK_TAMANHO
+    do {
         recebido = stop_n_wait(enviado, socket);
+    } while(get_tipo_pacote(recebido) != OK_TAMANHO);
 
-        while(recebido == NULL || get_tipo_pacote(recebido) != ACK) {
-            enviado = inicializa_pacote(DADOS, chunks, buffer, tamanho % 64);
-            recebido = stop_n_wait(enviado, socket);
+    enviado = destroi_pacote(enviado);
+
+    if(!ha_memoria_suficiente(*(uint64_t *)get_dados_pacote(recebido))) {
+        destroi_pacote(recebido);
+        if(!(enviado = inicializa_pacote(ERRO, 0, (char *) MSG_ERR_ESPACO, 0)))
+            return 0;
+
+        if(envia_pacote(enviado, socket) < 0) {
+            perror("restaura_client: Erro ao enviar o pacote de erro\n");
+            destroi_pacote(enviado);
+            return 0;
         }
 
-        destroi_pacote(recebido);
+        fprintf(stderr, "Erro: Memória insuficiente\n");
+        destroi_pacote(enviado);
+        return 0;
     }
 
-    // envia um ultimo pacote vazio
-    enviado = inicializa_pacote(FIM_DADOS, 0, NULL, 0);
+    destroi_pacote(recebido);
 
-    while((envia_pacote(&enviado, socket)) < 0) {
-        fprintf(stderr, "Erro ao enviar o último pacote, enviando novamente.\n");
+    // Tenta abrir o arquivo
+    if((arquivo = fopen(nomeArq, "w")) == NULL) {
+        perror("Erro ao abrir o arquivo");
+        return 0;
+    }
+
+    // Envia o pacote OK
+    if(!(enviado = inicializa_pacote(OK, 0, NULL, 0))) {
+        fprintf(stderr, "Erro ao inicializar o pacote\n");
+        return 0;
+    }
+
+    if(envia_pacote(enviado, socket) < 0) {
+        fprintf(stderr, "Erro ao enviar o pacote\n");
+        return 0;
+    }
+
+    // Inicia o recebimento dos dados
+    if(!recebe_fluxo_dados(arquivo, socket)) {
+        fprintf(stderr, "restaura_client: Erro ao receber os dados\n");
+        return 0;
     }
 
     return 1;
