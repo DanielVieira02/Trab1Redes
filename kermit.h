@@ -59,7 +59,7 @@
 #define OFFSET_CRC              88
 
 #define DIVISOR_CRC             0x119
-
+#define MAX_DADOS               63
 int client(int socket);
 int server(int socket);
 
@@ -82,11 +82,6 @@ unsigned char * converte_bytes_para_pacote(char * dados);
 /// @param packet 
 /// @return Retorna NULL
 unsigned char * destroi_pacote(unsigned char * packet);
-
-/// @brief Captura o tipo do pacote
-/// @param packet
-/// @return Retorna o tipo do pacote
-unsigned char get_tipo_pacote(unsigned char * packet);
 
 /// @brief imprime o pacote
 /// @param packet

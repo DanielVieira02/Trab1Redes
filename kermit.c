@@ -83,7 +83,7 @@ void print_pacote(unsigned char * packet) {
     printf("Sequência: %d\n", get_sequencia_pacote(packet));
     printf("Tipo: %d\n", get_tipo_pacote(packet));
     dados = get_dados_pacote(packet);
-    printf("Dados: %s\n", dados);
+    // printf("Dados: %s\n", dados); // descomente isso se for usar apenas strings como dados
     printf("CRC: %d\n", get_CRC(packet));
 
     printf("Pacote em bits:\n");
@@ -114,21 +114,33 @@ void print_pacote(unsigned char * packet) {
 }
 
 unsigned char * recebe_pacote(int socket) {
-    unsigned char * buffer = (unsigned char *) calloc(1, TAM_PACOTE_BYTES);
+    unsigned char * packet = (unsigned char *) calloc(1, TAM_PACOTE_BYTES);
+    unsigned char * buffer = NULL;
     int buffer_length = 0, crc_valor = 0;
 
-    if((buffer_length = recv(socket, buffer, TAM_PACOTE_BYTES, 0)) < 0) {
+    // Recebe o pacote
+    if((buffer_length = recv(socket, packet, TAM_PACOTE_BYTES, 0)) < 0) {
         perror("Erro ao receber o pacote");
-        free(buffer);
+        free(packet);
         return NULL;
     }
-	if (get_marcador_pacote(buffer) != MARCADOR_INICIO) {
+
+    // Verifica se o marcador de início está correto
+	if (get_marcador_pacote(packet) != MARCADOR_INICIO) {
         free(buffer);
 	    return NULL;
 	}
-    #ifndef DEBUG
-        buffer = realloc(buffer, (OFFSET_DADOS + TAM_CAMPO_CRC) / 8 + get_tamanho_pacote(buffer));
-    #else
+
+    // Realoca o pacote para o tamanho correto, caso contrario libera o pacote e retorna NULL
+    if(!(buffer = realloc(packet, (OFFSET_DADOS + TAM_CAMPO_CRC) / 8 + get_tamanho_pacote(packet)))) {
+        perror("Erro ao realocar o pacote");
+        free(packet);
+        return NULL;
+    }
+
+    packet = buffer;    // altera packet para o ponteiro realocado
+
+    #ifdef DEBUG
         printf("\n\nPacote recebido\n");
         print_pacote(buffer);
     #endif
@@ -194,9 +206,7 @@ unsigned char * stop_n_wait(unsigned char * packet, int socket) {
 
     // envia_pacote usa ponteiro de ponteiro pois pode haver realocações
     if(envia_pacote(&packet, socket) < 0) return NULL;
-    while((resposta = recebe_pacote(socket)) == NULL) {
-		printf("esperando pacote...\n");
-	}
+    while((resposta = recebe_pacote(socket)) == NULL);
     
     destroi_pacote(packet);
     return resposta;
@@ -236,7 +246,6 @@ int cria_envia_pck(char tipo, char sequencia, char * dados, int socket, int tama
         retorno = -1;
     }
 
-    destroi_pacote(packet);
     return retorno;
 }
 
