@@ -139,7 +139,7 @@ unsigned char * stop_n_wait(unsigned char * packet, int socket);
 /// @param packet pacote que será enviado
 /// @param socket socket que será utilizado
 /// @return Retorna 1 se o pacote foi enviado, -1 por erro no envio (função send)
-int envia_pacote(unsigned char * packet, int socket);
+int envia_pacote(unsigned char ** packet, int socket);
 
 //TODO: Definir o CRC porque eu ainda não entendi pra que isso serve
 unsigned char crc(unsigned char * packet, int tamanho);

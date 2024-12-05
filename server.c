@@ -34,7 +34,7 @@ int backup(unsigned char * packet, int socket) {
         insere_dados_pacote(pacote, (char *) MSG_ERR_ACESSO, 1);
     }
      
-    if(envia_pacote(pacote, socket) < 0) {
+    if(envia_pacote(&pacote, socket) < 0) {
         fprintf(stderr, "server_backup: Erro ao enviar pacote\n");
         return 0;
     }

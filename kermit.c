@@ -152,20 +152,29 @@ size_t calcula_tamanho_pacote(unsigned char * packet) {
 	return get_tamanho_pacote(packet) + ((OFFSET_DADOS+TAM_CAMPO_CRC) / 8);
 }
 
-int envia_pacote(unsigned char * packet, int socket) {
-    int bytes_enviados = calcula_tamanho_pacote(packet);
+int envia_pacote(unsigned char ** packet, int socket) {
+    int tam = calcula_tamanho_pacote(*packet);  // tamanho do pacote
+    int bytes_enviados = tam;   // bytes que serão enviados
+    unsigned char * buffer = NULL;
 
-
+    // se os dados não preencherem o pacote, preenche com 0
     if(bytes_enviados < 14) { 
-        bytes_enviados += (14 - bytes_enviados);
-        memset(&packet[bytes_enviados], 0, 14 - bytes_enviados);
-        packet = realloc(packet, 14);
+        bytes_enviados += (14 - tam);   // calcula o restante para 14
+        if((buffer = realloc(*packet, 14)) == NULL) {
+            perror("Erro ao realocar o pacote");
+            destroi_pacote(*packet);
+            return -1;
+        }
+
+        // realoca o pacote, é usado buffer pois o realloc pode falhar, assim o packet seria nulo
+        *packet = buffer;
+        memset(&(*packet)[tam], 0, 14 - tam);
     }
     #ifdef DEBUG
         printf("Tentando enviar %d bytes:\n", bytes_enviados);
     #endif
 
-    bytes_enviados = send(socket, packet, bytes_enviados, 0);
+    bytes_enviados = send(socket, *packet, bytes_enviados, 0);
 
     // Enviar o pacote
     if (bytes_enviados == -1) {
@@ -183,11 +192,13 @@ int envia_pacote(unsigned char * packet, int socket) {
 unsigned char * stop_n_wait(unsigned char * packet, int socket) {
     unsigned char * resposta = NULL;
 
-    if(envia_pacote(packet, socket) < 0) return NULL;
+    // envia_pacote usa ponteiro de ponteiro pois pode haver realocações
+    if(envia_pacote(&packet, socket) < 0) return NULL;
     while((resposta = recebe_pacote(socket)) == NULL) {
 		printf("esperando pacote...\n");
 	}
     
+    destroi_pacote(packet);
     return resposta;
 }
 
@@ -207,7 +218,7 @@ unsigned char crc(unsigned char *packet, int tamanho) {
 
 int insere_envia_pck(unsigned char * packet, char * dados, int tamanho, int socket) {
     insere_dados_pacote(packet, dados, tamanho);
-    return envia_pacote(packet, socket);
+    return envia_pacote(&packet, socket);
 }
 
 int cria_envia_pck(char tipo, char sequencia, char * dados, int socket, int tamanho) {
@@ -220,7 +231,7 @@ int cria_envia_pck(char tipo, char sequencia, char * dados, int socket, int tama
     else 
         packet = inicializa_pacote(tipo, sequencia, (unsigned char *)dados, tamanho);
 
-    if(envia_pacote(packet, socket) < 0) {
+    if(envia_pacote(&packet, socket) < 0) {
         fprintf(stderr, "Erro ao enviar pacote\n");
         retorno = -1;
     }
@@ -302,7 +313,7 @@ unsigned char get_tipo_pacote(unsigned char * packet) {
 
 void * get_dados_pacote(unsigned char * packet) {
     int byte = OFFSET_DADOS/8; // o byte atual é este.
-    if (packet == NULL) {
+    if (packet == NULL || get_tamanho_pacote(packet) == 0) {
         return NULL;
     }
     void * dados = calloc(get_tamanho_pacote(packet), 1);
@@ -382,12 +393,6 @@ void set_tipo(unsigned char * package, unsigned char tipo){
 
 void set_dados(unsigned char * package, void * dados){
     memcpy(&package[OFFSET_DADOS/8], dados, get_tamanho_pacote(package));
-    printf("\nDados: ");
-    print_byte(*(uint64_t *)&package[OFFSET_DADOS/8], 63, 0);
-    printf("\n");
-    printf("\nDados via get: ");
-    print_byte((uint64_t)get_dados_pacote(package), 63, 0);
-    printf("\n");
 }
 
 void set_crc(unsigned char * package){
