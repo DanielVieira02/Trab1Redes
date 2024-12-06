@@ -201,7 +201,6 @@ int client(int socket) {
                 }
 
                 fclose(arquivo);
-                executar = 0;
                 break;
             case 2:
                 if(!restaura_client(buffer, socket)){
@@ -249,7 +248,9 @@ int restaura_client(char *nomeArq, int socket) {
 
     enviado = destroi_pacote(enviado);
 
-    if(!ha_memoria_suficiente(*(uint64_t *)get_dados_pacote(recebido))) {
+    uint64_t * tamanho_arquivo_ptr = (uint64_t *)get_dados_pacote(recebido);
+
+    if(!ha_memoria_suficiente(*tamanho_arquivo_ptr)) {
         destroi_pacote(recebido);
         if(!(enviado = inicializa_pacote(ERRO, 0, (char *) MSG_ERR_ESPACO, 0)))
             return 0;
@@ -264,6 +265,8 @@ int restaura_client(char *nomeArq, int socket) {
         destroi_pacote(enviado);
         return 0;
     }
+
+    free(tamanho_arquivo_ptr);
 
     destroi_pacote(recebido);
 

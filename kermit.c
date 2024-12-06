@@ -215,7 +215,7 @@ unsigned char * stop_n_wait(unsigned char * packet, int socket) {
 
 unsigned char crc(unsigned char *packet, int tamanho) {
     unsigned char crc = 0x00;     // Valor inicial do CRC
-    unsigned char mensagem[tamanho], * dados = NULL; // Dados do pacote
+    unsigned char mensagem[tamanho];
 
     // Preparando os dados para o cálculo do CRC
     memcpy(&mensagem, &packet[OFFSET_TAM / 8], tamanho);
@@ -223,7 +223,6 @@ unsigned char crc(unsigned char *packet, int tamanho) {
     // Calculando o CRC
     crc = divisao_mod_2(mensagem, tamanho);
 
-    free(dados);
     return crc;
 }
 
@@ -615,12 +614,10 @@ int envia_fluxo_dados(FILE * arquivo, uint64_t tamanho, int socket) {
 
 int ajusta_pacote(unsigned char ** packet) {
     unsigned char * buffer = NULL;
-    int tamanho = calcula_tamanho_pacote(*packet),
-        bytes_enviados = 0;
+    int tamanho = calcula_tamanho_pacote(*packet);
 
     // se os dados não preencherem o pacote, preenche com 0
     if(tamanho < 14) { 
-        bytes_enviados += (14 - tamanho);   // calcula o restante para 14
         if((buffer = realloc(*packet, 14)) == NULL) {
             perror("Erro ao realocar o pacote");
             destroi_pacote(*packet);

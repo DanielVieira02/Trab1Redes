@@ -25,7 +25,9 @@ int backup(unsigned char * packet, int socket);
 int restaura_server(char *nomeArq, int socket);
 
 int backup(unsigned char * packet, int socket) {
-    FILE * arquivo = fopen((char *) get_dados_pacote(packet), "w");
+    char * nome_arquivo = (char *) get_dados_pacote(packet);
+    FILE * arquivo = fopen(nome_arquivo, "w");
+    free(nome_arquivo);
     unsigned char * pacote = NULL;
     uint64_t tamanho = 0;
 
@@ -79,7 +81,9 @@ uint64_t recebe_tamanho(int socket) {
 
     // este conversor de tamanho deu uma dor de cabeça...
     // mas é devido ao tamanho diferente de bytes que pode vir do cliente
-    data = *(uint64_t *)get_dados_pacote(recebido_cliente);
+    uint64_t * data_ptr = get_dados_pacote(recebido_cliente);
+    data = *data_ptr;
+    free(data_ptr);
 
     #ifdef DEBUG
         printf("\nRecebido o arquivo de tamanho %lu\n", data);
@@ -113,10 +117,12 @@ void trata_pacote(unsigned char * packet, int socket) {
         
         break;
     case RESTAURA:
-        if(!(restaura_server((char *) get_dados_pacote(packet), socket))) 
+        char * nome_arquivo = (char *) get_dados_pacote(packet);
+        if(!(restaura_server(nome_arquivo, socket))) 
             fprintf(stderr, "Erro ao realizar o backup\n");
         else 
             printf("Backup realizado com sucesso\n");
+        free(nome_arquivo);
         break;
     case VERIFICA:
         break;
