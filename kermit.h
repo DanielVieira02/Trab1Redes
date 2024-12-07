@@ -65,14 +65,17 @@
 #define ERRO_ALLOC              -2
 #define ERRO_RECV               -3
 #define ERRO_MARCADOR           -4
-
+extern uint64_t SEQUENCIA;
 int client(int socket);
 int server(int socket);
+
+void aumenta_sequencia();
+void diminui_sequencia();
 
 /// @brief Aloca e inicializa os valores do pacote
 /// @param packet
 /// @return Retorna o pacote inicializado, caso contrário retorna NULL
-unsigned char * inicializa_pacote(char tipo, uint8_t sequencia, void * dados, int tamanho);
+unsigned char * inicializa_pacote(char tipo, void * dados, int tamanho);
 
 /// @brief Insere os dados no pacote e define o valor do tamanho da estrutura
 /// @param packet 

@@ -1,11 +1,22 @@
 #include "kermit.h"
+
+uint64_t SEQUENCIA = 0;
+
+void aumenta_sequencia() {
+    SEQUENCIA = (SEQUENCIA + 1) % 64;
+}
+
+void diminui_sequencia() {
+    SEQUENCIA = (SEQUENCIA - 1) % 64;
+}
+
 void print_byte(uint64_t byte, int fim, int comeco) {
     for(int i = fim; i >= comeco; i--){
         printf("%d", byte & (1<<i) ? 1 : 0);
     }
 }
 
-unsigned char * inicializa_pacote(char tipo, uint8_t sequencia, void * dados, int tamanho) {
+unsigned char * inicializa_pacote(char tipo, void * dados, int tamanho) {
     unsigned char * packet = NULL;
 
     #ifdef DEBUG
@@ -17,7 +28,7 @@ unsigned char * inicializa_pacote(char tipo, uint8_t sequencia, void * dados, in
     }
     set_marcador(packet, MARCADOR_INICIO);
     set_tamanho(packet, tamanho);
-    set_sequencia(packet, sequencia);
+    set_sequencia(packet, SEQUENCIA);
     set_tipo(packet, tipo);
     set_dados(packet, dados);
     set_crc(packet);
@@ -121,39 +132,27 @@ void print_pacote(unsigned char * packet) {
 
 unsigned char * recebe_pacote(int socket) {
     unsigned char * packet = (unsigned char *) calloc(1, TAM_PACOTE_BYTES);
-    unsigned char * buffer = NULL;
     int buffer_length = 0, crc_valor = 0;
 
     // Recebe o pacote
     if((buffer_length = recv(socket, packet, TAM_PACOTE_BYTES, 0)) < 0) {
         perror("Erro ao receber o pacote");
+        diminui_sequencia();
         destroi_pacote(packet); 
         return NULL;
     }
 
     // Verifica se o marcador de início está correto
 	if (get_marcador_pacote(packet) != MARCADOR_INICIO) {
+        diminui_sequencia();
         destroi_pacote(packet);
 	    return NULL;
-	}
-
-    // Realoca o pacote para o tamanho correto, caso contrario libera o pacote e retorna NULL
-    if(calcula_tamanho_pacote(packet) < 14) {
-        if(!(buffer = realloc(packet, (OFFSET_DADOS + TAM_CAMPO_CRC) / 8 + get_tamanho_pacote(packet)))) {
-            perror("Erro ao realocar o pacote");
-            destroi_pacote(packet);
-            return NULL;
-        }
-        packet = buffer;    // altera packet para o ponteiro realocado
-    }
-    
-
+	}   
 
     #ifdef DEBUG
         printf("\n\nPacote recebido\n");
         print_pacote(packet);
     #endif
-
 
     // Analise CRC
     crc_valor = crc(packet, get_tamanho_pacote(packet)+3);
@@ -161,6 +160,7 @@ unsigned char * recebe_pacote(int socket) {
         fprintf(stderr, "Erro no CRC\n");
         printf("CRC: %d\n", crc_valor);
         destroi_pacote(packet);
+        diminui_sequencia();
         envia_nack(socket);
         return NULL;
     }
@@ -191,12 +191,15 @@ int envia_pacote(unsigned char * packet, int socket) {
 
     // Enviar o pacote
     if (tam == -1) {
+        diminui_sequencia();
         perror("Erro ao enviar o pacote");
         return -1;
     }
     #ifdef DEBUG
         printf("Pacote de tamanho %u enviado.\n", tam);
     #endif
+
+    aumenta_sequencia();
 
     return tam;
 }
@@ -209,7 +212,9 @@ unsigned char * stop_n_wait(unsigned char * packet, int socket) {
     // envia_pacote usa ponteiro de ponteiro pois pode haver realocações
     if(envia_pacote(packet, socket) < 0) return NULL;
     while((resposta = recebe_pacote(socket)) == NULL);
-    
+
+    aumenta_sequencia();
+
     return resposta;
 }
 
@@ -237,9 +242,9 @@ int cria_envia_pck(char tipo, char sequencia, char * dados, int socket, int tama
     int retorno = 1;
 
     if(!dados)
-        packet = inicializa_pacote(tipo, 0, NULL, 0);
+        packet = inicializa_pacote(tipo, NULL, 0);
     else 
-        packet = inicializa_pacote(tipo, sequencia, (unsigned char *)dados, tamanho);
+        packet = inicializa_pacote(tipo, (unsigned char *)dados, tamanho);
 
     if(envia_pacote(packet, socket) < 0) {
         fprintf(stderr, "Erro ao enviar pacote\n");
@@ -497,6 +502,9 @@ int recebe_fluxo_dados(FILE * arquivo, int socket) {
         }
 
         while(get_sequencia_pacote(recebido) != sequencia) {
+            #ifdef DEBUG
+                printf("Esperamos o pacote %lu, recebemos %u\n", sequencia, get_sequencia_pacote(recebido));
+            #endif
             envia_nack(socket);
             destroi_pacote(recebido);
             recebido = recebe_pacote(socket);
@@ -552,7 +560,7 @@ int envia_fluxo_dados(FILE * arquivo, uint64_t tamanho, int socket) {
             return 0;    
         }
         // cria o pacote de dados
-        if(!(enviado = inicializa_pacote(DADOS, seq % (1 << 5), buffer, MAX_DADOS))) {
+        if(!(enviado = inicializa_pacote(DADOS, buffer, MAX_DADOS))) {
             fprintf(stderr, "Erro ao inicializar o pacote\n");
             free(buffer);
             return 0;
@@ -562,7 +570,9 @@ int envia_fluxo_dados(FILE * arquivo, uint64_t tamanho, int socket) {
         destroi_pacote(enviado);
         // enquanto der erro no CRC, timeout ou o pacote recebido não for do tipo correto
         while(get_tipo_pacote(recebido) != ACK) {
-            enviado = inicializa_pacote(DADOS, seq, buffer, MAX_DADOS);
+            enviado = inicializa_pacote(DADOS, buffer, MAX_DADOS);
+            recebido = destroi_pacote(recebido);
+            diminui_sequencia();
             recebido = stop_n_wait(enviado, socket);
             destroi_pacote(enviado);
         }
@@ -581,7 +591,7 @@ int envia_fluxo_dados(FILE * arquivo, uint64_t tamanho, int socket) {
             return 0;
         }
 
-        if(!(enviado = inicializa_pacote(DADOS, chunks % (1 << 5), buffer, tamanho % MAX_DADOS))) {
+        if(!(enviado = inicializa_pacote(DADOS, buffer, tamanho % MAX_DADOS))) {
             fprintf(stderr, "Erro ao inicializar o pacote\n");
             destroi_pacote(enviado);
             free(buffer);
@@ -592,7 +602,9 @@ int envia_fluxo_dados(FILE * arquivo, uint64_t tamanho, int socket) {
         destroi_pacote(enviado);
 
         while(recebido == NULL || get_tipo_pacote(recebido) != ACK) {
-            enviado = inicializa_pacote(DADOS, chunks, buffer, tamanho % 64);
+            enviado = inicializa_pacote(DADOS, buffer, tamanho % 64);
+            recebido = destroi_pacote(recebido);
+            diminui_sequencia();
             recebido = stop_n_wait(enviado, socket);
             destroi_pacote(enviado);
         }
@@ -601,7 +613,7 @@ int envia_fluxo_dados(FILE * arquivo, uint64_t tamanho, int socket) {
     }
 
     // envia um ultimo pacote vazio
-    enviado = inicializa_pacote(FIM_DADOS, 0, NULL, 0);
+    enviado = inicializa_pacote(FIM_DADOS, NULL, 0);
 
     while((envia_pacote(enviado, socket)) < 0) {
         fprintf(stderr, "Erro ao enviar o último pacote, enviando novamente.\n");

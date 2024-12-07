@@ -14,7 +14,7 @@ int main(int argc, char * argv[]) {
         nome_socket = "lo";
     #endif
         printf("Socket: %s\n", nome_socket);
-        socket = ConexaoRawSocket("lo");
+        socket = ConexaoRawSocket("eno1");
     if(isClient) {
         client(socket);
     } else {

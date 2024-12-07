@@ -67,14 +67,15 @@ int backup_client(FILE *dados, char *nome_arq, int socket) {
     #endif
 
     // cria um pacote com o nome do arquivo no campo de dados
-    if(!(enviado = inicializa_pacote(BACKUP, 0, (unsigned char *)nome_arq, strnlen(nome_arq, TAM_CAMPO_DADOS- 2) + 1))) {
+    if(!(enviado = inicializa_pacote(BACKUP, (unsigned char *)nome_arq, strnlen(nome_arq, TAM_CAMPO_DADOS- 2) + 1))) {
         fprintf(stderr, "Erro ao inicializar o pacote\n");
         return 0;
     }
 
     recebido = stop_n_wait(enviado, socket); // Envia e espera o pacote OK
     while(get_tipo_pacote(recebido) != OK) {
-        recebido = destroi_pacote(recebido);    
+        recebido = destroi_pacote(recebido);
+        diminui_sequencia();    
         recebido = stop_n_wait(enviado, socket);
     }
 
@@ -93,7 +94,7 @@ int backup_client(FILE *dados, char *nome_arq, int socket) {
                 printf("Sinal OK recebido do servidor\n");
                 printf("Enviando o tamanho do arquivo\n");
             #endif
-            if(!(enviado = inicializa_pacote(TAMANHO, 0, &tamanho, sizeof(uint64_t)))) {
+            if(!(enviado = inicializa_pacote(TAMANHO, &tamanho, sizeof(uint64_t)))) {
                 fprintf(stderr, "Erro ao inicializar o pacote\n");
                 return 0;
             }
@@ -105,11 +106,10 @@ int backup_client(FILE *dados, char *nome_arq, int socket) {
             #endif
             // Envia e espera o pacote ok
             if(!(recebido = stop_n_wait(enviado, socket))){
+                recebido = stop_n_wait(enviado, socket);
                 fprintf(stderr, "Erro ao enviar o tamanho do arquivo\n");
                 return 0;
             }
-
-            enviado = destroi_pacote(enviado);
 
             // enquanto o pacote recebido não for do tipo correto
             #ifdef DEBUG
@@ -124,13 +124,12 @@ int backup_client(FILE *dados, char *nome_arq, int socket) {
                 if(tipo == ERRO) {
                     // seria necessario aqui uma função que printa a mensagem de erro respectiva pra cada codigo
                     fprintf(stderr, "backup_client: erro específico do servidor\n");
-                    enviado = destroi_pacote(enviado);
                     break;
                 }
                 destroi_pacote(recebido);
-                enviado = destroi_pacote(enviado);
+                diminui_sequencia();
                 recebido = stop_n_wait(enviado, socket);
-
+                tipo = get_tipo_pacote(recebido);
             }
 
             enviado = destroi_pacote(enviado);
@@ -233,7 +232,7 @@ int restaura_client(char *nomeArq, int socket) {
     #endif
 
     // envia um pacote pedindo para restaurar o arquivo
-    if(!(enviado = inicializa_pacote(RESTAURA, 0, (unsigned char *)nomeArq, strnlen(nomeArq, TAM_CAMPO_DADOS - 2) + 1))) {
+    if(!(enviado = inicializa_pacote(RESTAURA, (unsigned char *)nomeArq, strnlen(nomeArq, TAM_CAMPO_DADOS - 2) + 1))) {
         fprintf(stderr, "Erro ao inicializar o pacote\n");  
         return 0;
     }
@@ -252,7 +251,7 @@ int restaura_client(char *nomeArq, int socket) {
 
     if(!ha_memoria_suficiente(*tamanho_arquivo_ptr)) {
         destroi_pacote(recebido);
-        if(!(enviado = inicializa_pacote(ERRO, 0, (char *) MSG_ERR_ESPACO, 0)))
+        if(!(enviado = inicializa_pacote(ERRO, (char *) MSG_ERR_ESPACO, 0)))
             return 0;
 
         if(envia_pacote(enviado, socket) < 0) {
@@ -277,7 +276,7 @@ int restaura_client(char *nomeArq, int socket) {
     }
 
     // Envia o pacote OK
-    if(!(enviado = inicializa_pacote(OK, 0, NULL, 0))) {
+    if(!(enviado = inicializa_pacote(OK, NULL, 0))) {
         fprintf(stderr, "Erro ao inicializar o pacote\n");
         return 0;
     }
