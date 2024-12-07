@@ -65,12 +65,13 @@
 #define ERRO_ALLOC              -2
 #define ERRO_RECV               -3
 #define ERRO_MARCADOR           -4
-extern uint64_t SEQUENCIA;
+#define ENVIA                    0
+#define RECEBE                   1
+extern uint64_t SEQUENCIA_RECEBE;
+extern uint64_t SEQUENCIA_ENVIA;
+
 int client(int socket);
 int server(int socket);
-
-void aumenta_sequencia();
-void diminui_sequencia();
 
 /// @brief Aloca e inicializa os valores do pacote
 /// @param packet

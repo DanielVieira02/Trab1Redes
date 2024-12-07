@@ -36,18 +36,11 @@ int backup(unsigned char * packet, int socket) {
         #ifdef DEBUG
             printf("Arquivo aberto com sucesso\n");
         #endif
-        pacote = inicializa_pacote(OK, NULL, 0);
     } else {
         pacote = inicializa_pacote(ERRO, (unsigned char *) MSG_ERR_ACESSO, 1);
         insere_dados_pacote(pacote, (char *) MSG_ERR_ACESSO, 1);
+        envia_pacote(pacote, socket);
     }
-     
-    if(envia_pacote(pacote, socket) < 0) {
-        fprintf(stderr, "server_backup: Erro ao enviar pacote\n");
-        return 0;
-    }
-
-    aumenta_sequencia();
 
     #ifdef DEBUG
         printf("Pacote enviado\n");
@@ -72,7 +65,7 @@ uint64_t recebe_tamanho(int socket) {
     unsigned char * recebido_cliente = NULL;
 
     // espera o cliente enviar o tamanho do arquivo
-    while((recebido_cliente = recebe_pacote(socket)) == NULL);
+    while((recebido_cliente = stop_n_wait(inicializa_pacote(OK, NULL, 0), socket)) == NULL);
 
     // Enquanto o pacote recebido não é do tipo correto
     while(get_tipo_pacote(recebido_cliente) != TAMANHO){
@@ -179,7 +172,6 @@ int restaura_server(char *nomeArq, int socket) {
     while (get_tipo_pacote(recebido) != OK) {
         recebido = destroi_pacote(recebido);
         recebido = stop_n_wait(enviado, socket);
-        diminui_sequencia();
     }
 
     // destroi o pacote enviado e o recebido
