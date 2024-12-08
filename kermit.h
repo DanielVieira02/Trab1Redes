@@ -49,7 +49,7 @@
 #define TAM_CAMPO_DADOS         64
 #define TAM_CAMPO_CRC           8
 #define TAM_PACOTE              544
-#define TAM_PACOTE_BYTES        68
+#define TAM_PACOTE_BYTES        133
 
 #define OFFSET_MARCADOR         0
 #define OFFSET_TAM              8
@@ -251,4 +251,20 @@ u_int64_t ha_memoria_suficiente(u_int64_t tamanho);
 
 
 size_t calcula_tamanho_pacote(unsigned char * packet);
+
+/// @brief Função que analisa o pacote e procura casos em que há 0x81, que é a tag do protocolo VLAN, insere um 0xFF após para evitar o problema
+/// @param packet pacote que será alterado
+/// @return pacote com as análises feitas
+unsigned char * analisa_insere(unsigned char * packet);
+
+/// @brief Função que analisa o pacote e procura casos em que há 0x81, que é a tag do protocolo VLAN, retira os 0xFF após para evitar o problema
+/// @param packet pacote que será alterado
+/// @return pacote com as análises feitas
+unsigned char * analisa_retira(unsigned char * packet);
+
+/// @brief Conta quantos TPID (0x81) há no arquivo
+/// @param buffer buffer que será analisado
+/// @param tamanho tamanho do buffer
+/// @return quantidade de TPID no buffer
+unsigned int count_TPID(unsigned char * buffer, unsigned int tamanho);
 #endif

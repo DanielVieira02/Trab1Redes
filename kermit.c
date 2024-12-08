@@ -156,6 +156,12 @@ unsigned char * recebe_pacote(int socket) {
 	    return NULL;
 	}   
 
+    // retira os 0xFF
+    if(!(packet = analisa_retira(packet))){
+        perror("Erro ao realocar o pacote");
+        return 0;
+    }
+
     #ifdef DEBUG
         printf("\n\nPacote recebido\n");
         print_pacote(packet);
@@ -195,7 +201,7 @@ size_t calcula_tamanho_pacote(unsigned char * packet) {
 int envia_pacote(unsigned char * packet, int socket) {
     int tam = 0;  // tamanho do pacote
 
-    tam = calcula_tamanho_pacote(packet);
+    tam = calcula_tamanho_pacote(packet) + count_TPID(packet, calcula_tamanho_pacote(packet));
 
     if(tam < 14) tam = 14;  // tamanho mínimo do pacote
 
@@ -565,8 +571,7 @@ int envia_fluxo_dados(FILE * arquivo, uint64_t tamanho, int socket) {
     // Envia o pacote de dados
     for(int chunks = 0; chunks < total_chunks; chunks++) {
         #ifdef DEBUG
-            printf("Enviando o pacote %u\n", chunks);
-            printf("São %u pacotes\n", chunks);
+            printf("São %lu pacotes\n", total_chunks);
             printf("Estamos no pacote %u\n", chunks);
         #endif
         // lê 63 bytes do arquivo
@@ -645,7 +650,8 @@ int envia_fluxo_dados(FILE * arquivo, uint64_t tamanho, int socket) {
         fprintf(stderr, "Erro ao enviar o último pacote, enviando novamente.\n");
     }
 
-    destroi_pacote(enviado);
+    enviado = destroi_pacote(enviado);
+    recebido = destroi_pacote(recebido);
     free(buffer);
     return 1;
 }
@@ -665,6 +671,11 @@ int ajusta_pacote(unsigned char ** packet) {
         // realoca o pacote, é usado buffer pois o realloc pode falhar, assim o packet seria nulo
         *packet = buffer;
         memset(&(*packet)[tamanho], 0, 14 - tamanho);
+    }
+
+    if(!(*packet = analisa_insere(*packet))){
+        perror("Erro ao realocar o pacote");
+        return 0;
     }
 
     return 1;
@@ -688,4 +699,73 @@ u_int64_t ha_memoria_suficiente(u_int64_t tamanho) {
     }
 
     return 1;
+}
+
+unsigned char * analisa_insere(unsigned char * packet) {
+    unsigned char * copia_packet = NULL;
+    int ocorrencias = 0;
+
+    if(!packet) return NULL;
+
+    // primeiro conta as ocorrencias
+    for(size_t byte = 0; byte < calcula_tamanho_pacote(packet); byte++) {
+        if(packet[byte] == 0x81) {
+            ocorrencias++;
+        }
+    }
+
+    // se nao tiver nenhuma ocorrencia, apenas retorna o packet
+    if(ocorrencias == 0) return packet;
+
+    // aloca e insere os 0xFF
+    copia_packet = (unsigned char *)calloc(calcula_tamanho_pacote(packet) + ocorrencias, 1);
+
+    for(size_t i = 0, j = 0; j < calcula_tamanho_pacote(packet); j++) {
+        copia_packet[i++] = packet[j];
+        
+        // quando for 0x81, insere um 0xFF
+        if(packet[j] == 0x81) {
+            copia_packet[i++] = 0xFF;
+        }
+    }
+
+    packet = destroi_pacote(packet);
+    packet = copia_packet;
+
+    return packet;
+}
+
+/// @brief Função que analisa o pacote e procura casos em que há 0x81, que é a tag do protocolo VLAN, retira os 0xFF após para evitar o problema
+/// @param packet pacote que será alterado
+/// @return pacote com as análises feitas
+unsigned char * analisa_retira(unsigned char * packet) {
+    unsigned char * copia_packet = NULL;
+
+    if(!packet) return NULL;
+
+    // aloca e retira os 0xFF
+    copia_packet = (unsigned char *)calloc(calcula_tamanho_pacote(packet), 1);
+
+    for(size_t i = 0, j = 0; j < TAM_PACOTE_BYTES && i < calcula_tamanho_pacote(packet); j++) {
+        // quando for 0x81 e 0xff, retira o 0xFF
+        if(packet[j] == 0x81 && packet[j + 1] == 0xFF) {
+            copia_packet[i++] = packet[j++];
+        } else {
+            copia_packet[i++] = packet[j];
+        }
+    }
+
+    packet = destroi_pacote(packet);
+    packet = copia_packet;
+
+    return packet;
+}
+
+unsigned int count_TPID(unsigned char * buffer, unsigned int tamanho) {
+    unsigned int counter = 0;
+
+    for(unsigned int i = 0; i < tamanho + counter; i++)
+        if(buffer[i] == 0x81) counter++;
+
+    return counter;
 }
