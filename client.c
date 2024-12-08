@@ -72,11 +72,16 @@ int backup_client(FILE *dados, char *nome_arq, int socket) {
         return 0;
     }
 
-    recebido = stop_n_wait(enviado, socket); // Envia e espera o pacote OK
-    while(get_tipo_pacote(recebido) != OK) {
+    // Envia e espera o pacote OK
+    while((recebido = stop_n_wait(enviado, socket)) != NULL && get_tipo_pacote(recebido) != OK) {
+        #ifdef DEBUG
+            printf("Destruindo o pacote recebido devido ao tipo errado\n");
+        #endif
         recebido = destroi_pacote(recebido);
-        diminui_sequencia();    
-        recebido = stop_n_wait(enviado, socket);
+        if(get_tipo_pacote(recebido) == ERRO) {
+            fprintf(stderr, "Erro específico do servidor\n");
+            return 0;
+        }
     }
 
     tipo = get_tipo_pacote(recebido);
@@ -104,14 +109,21 @@ int backup_client(FILE *dados, char *nome_arq, int socket) {
                 printf("Dados do pacote enviado: %ls\n", (unsigned int *)teste);
                 free(teste);
             #endif
-            // Envia e espera o pacote ok
-            if(!(recebido = stop_n_wait(enviado, socket))){
-                recebido = stop_n_wait(enviado, socket);
-                fprintf(stderr, "Erro ao enviar o tamanho do arquivo\n");
-                return 0;
-            }
+		    // Envia e espera o pacote ok
+		    recebido = stop_n_wait(enviado, socket);
+		    while(get_tipo_pacote(recebido) != OK) {
+                #ifdef DEBUG
+                    printf("Destruindo o pacote recebido devido ao tipo errado\n");
+                #endif
+			    recebido = destroi_pacote(recebido);
+			    recebido = stop_n_wait(enviado, socket);
+			    if(get_tipo_pacote(recebido) == ERRO) {
+			     fprintf(stderr, "Erro específico do servidor\n");
+			     return 0;
+			    }
+		    }
 
-            // enquanto o pacote recebido não for do tipo correto
+		    // enquanto o pacote recebido não for do tipo correto
             #ifdef DEBUG
                 printf("Verificando se o tipo do pacote é OK\n");
             #endif
@@ -119,7 +131,7 @@ int backup_client(FILE *dados, char *nome_arq, int socket) {
             tipo = get_tipo_pacote(recebido);
             while(tipo == NACK || tipo != OK) {
                 #ifdef DEBUG
-                    printf("Pacote recebido não é do tipo correto\n");
+                    printf("Destruindo o pacote recebido devido ao tipo errado\n");
                 #endif
                 if(tipo == ERRO) {
                     // seria necessario aqui uma função que printa a mensagem de erro respectiva pra cada codigo
@@ -127,7 +139,6 @@ int backup_client(FILE *dados, char *nome_arq, int socket) {
                     break;
                 }
                 destroi_pacote(recebido);
-                diminui_sequencia();
                 recebido = stop_n_wait(enviado, socket);
                 tipo = get_tipo_pacote(recebido);
             }
@@ -173,6 +184,8 @@ int client(int socket) {
     int executar = 1;
 
     while(executar) {
+        SEQUENCIA_ENVIA = 0;
+        SEQUENCIA_RECEBE = 0;
         printf("Escolha o comando \n");
         printf("[1] Backup  [2] Restaura    [3] Verifica \n");
         printf("[0] Sair\n");
@@ -182,6 +195,11 @@ int client(int socket) {
         }
 
         while (getchar() != '\n');  // só pra tirar o \n do buffer
+
+        if(comando == 0) {
+            if(buffer) free(buffer);
+            return 0;
+        }
 
         printf("Insira o nome do arquivo: \n");
         ler_entrada(buffer);                
@@ -211,6 +229,10 @@ int client(int socket) {
                 break;
             case 3:
                 printf("TODO Verifica, mano\n");
+                break;
+            case 0:
+                printf("Saindo\n");
+                executar = 0;
                 break;
             default:
                 executar = 0;
