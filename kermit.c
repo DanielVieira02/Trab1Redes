@@ -223,11 +223,20 @@ int envia_pacote(unsigned char * packet, int socket) {
 unsigned char * stop_n_wait(unsigned char * packet, int socket) {
 
     unsigned char * resposta = NULL;
-
+    int correto = 0;
     // envia_pacote usa ponteiro de ponteiro pois pode haver realocações
     if(envia_pacote(packet, socket) < 0) return NULL;
-    while((resposta = recebe_pacote(socket)) == NULL);
+    while(!correto){
+        if((resposta = recebe_pacote(socket)) == NULL)
+            continue;
 
+        // se for nack, envia novamente
+        if(get_tipo_pacote(resposta) == NACK) {
+            envia_pacote(packet, socket);
+        } else 
+            correto = 1;
+    }
+    
     return resposta;
 }
 
@@ -632,7 +641,7 @@ int envia_fluxo_dados(FILE * arquivo, uint64_t tamanho, int socket) {
     // envia um ultimo pacote vazio
     enviado = inicializa_pacote(FIM_DADOS, NULL, 0);
 
-    while((envia_pacote(enviado, socket)) < 0) {
+    while((recebido = stop_n_wait(enviado, socket)) == NULL || get_tipo_pacote(recebido) != ACK) {
         fprintf(stderr, "Erro ao enviar o último pacote, enviando novamente.\n");
     }
 

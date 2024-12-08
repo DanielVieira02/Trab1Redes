@@ -73,7 +73,7 @@ int backup_client(FILE *dados, char *nome_arq, int socket) {
     }
 
     // Envia e espera o pacote OK
-    while((recebido = stop_n_wait(enviado, socket)) != OK) {
+    while((recebido = stop_n_wait(enviado, socket)) != NULL && get_tipo_pacote(recebido) != OK) {
         #ifdef DEBUG
             printf("Destruindo o pacote recebido devido ao tipo errado\n");
         #endif
@@ -184,6 +184,8 @@ int client(int socket) {
     int executar = 1;
 
     while(executar) {
+        SEQUENCIA_ENVIA = 0;
+        SEQUENCIA_RECEBE = 0;
         printf("Escolha o comando \n");
         printf("[1] Backup  [2] Restaura    [3] Verifica \n");
         printf("[0] Sair\n");
@@ -193,6 +195,11 @@ int client(int socket) {
         }
 
         while (getchar() != '\n');  // só pra tirar o \n do buffer
+
+        if(comando == 0) {
+            if(buffer) free(buffer);
+            return 0;
+        }
 
         printf("Insira o nome do arquivo: \n");
         ler_entrada(buffer);                
@@ -222,6 +229,10 @@ int client(int socket) {
                 break;
             case 3:
                 printf("TODO Verifica, mano\n");
+                break;
+            case 0:
+                printf("Saindo\n");
+                executar = 0;
                 break;
             default:
                 executar = 0;

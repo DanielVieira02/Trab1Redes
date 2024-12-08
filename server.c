@@ -105,7 +105,7 @@ uint64_t recebe_tamanho(int socket) {
 void trata_pacote(unsigned char * packet, int socket) {
     switch (get_tipo_pacote(packet)) {
     case BACKUP:
-        if(!backup(packet, socket)) 
+        if(backup(packet, socket)) 
             fprintf(stderr, "Erro ao realizar o backup\n");
         else 
             printf("Backup completo.\n");
@@ -130,6 +130,8 @@ int server(int socket) {
     unsigned char * packet = NULL;
 
     while(1) {
+        SEQUENCIA_ENVIA = 0;
+        SEQUENCIA_RECEBE = 0;
         // fica esperando pacotes
         #ifdef DEBUG
             printf("Esperando resposta do cliente... \n");
@@ -137,6 +139,8 @@ int server(int socket) {
         while(!(packet = recebe_pacote(socket)));
 
         trata_pacote(packet, socket);
+
+        packet = destroi_pacote(packet);
     }
     return 0;
 }
@@ -185,5 +189,5 @@ int restaura_server(char *nomeArq, int socket) {
     }
 
     fclose(arquivo);
-    return 0;
+    return 1;
 }
