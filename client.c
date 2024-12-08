@@ -25,10 +25,58 @@ kermit_protocol_state * tamanho_client(unsigned char * resposta, void * dados, i
 int backup_client(FILE* arquivo, char * nome_arq, int socket);
 
 /// @brief Função que restaura o arquivo presente no servidor
-/// @param nomeArq Nome do arquivo
+/// @param nome_arq Nome do arquivo
 /// @param socket Socket que será utilizado
 /// @return Retorna 1 se o arquivo foi restaurado com sucesso, 0 caso contrário
-int restaura_client(char *nomeArq, int socket);
+int restaura_client(char *nome_arq, int socket);
+
+/// @brief Função que compara os checksums do arquivo no client e no servidor
+/// @param nome_arq Nome do arquivo
+/// @param socket Socket que será utilizado
+/// @return Retorna 1 se o checksum foi realizado com sucesso, 0 caso contrário
+unsigned int verifica_client(char *nome_arq, int socket);
+
+unsigned int verifica_client(char *nome_arq, int socket) {
+    unsigned char *enviado = NULL, *recebido = NULL;
+    unsigned int checksum_server = 0, checksum_local = 0;
+
+    // Verifica se o arquivo existe, ou é acessível
+    if(access(nome_arq, F_OK) == -1) {
+        perror("Erro ao abrir o arquivo");
+        return 0;
+    }
+    
+    // Envia um pacote pedindo para verificar o arquivo
+    if(!(enviado = inicializa_pacote(VERIFICA, (unsigned char *)nome_arq, strnlen(nome_arq, TAM_CAMPO_DADOS - 2) + 1))) {
+        fprintf(stderr, "Erro ao inicializar o pacote\n");
+        return 0;
+    }
+
+    // Envia e espera o pacote OK + CHEKSUM
+    recebido = stop_n_wait(enviado, socket);
+    while(get_tipo_pacote(recebido) != OK_CHECKSUM){
+        recebido = destroi_pacote(recebido);
+        recebido = stop_n_wait(enviado, socket);
+    }
+
+    // Realiza o checksum do arquivo e indica se os arquivos são iguais ou não
+    checksum_server = *((unsigned int *)get_dados_pacote(recebido));
+
+    checksum_local = realiza_checksum(nome_arq);
+
+    // Compara os checksums
+    if (checksum_server == checksum_local) {
+        printf("Checksums iguais: Arquivos são idênticos.\n");
+    } else {
+        printf("Checksums diferentes: Arquivos são diferentes.\n");
+    }
+
+    // Libera os pacotes
+    if(enviado) enviado = destroi_pacote(enviado);
+    if(recebido) recebido = destroi_pacote(recebido);
+
+    return 1;
+}
 
 kermit_protocol_state * fim_dados_client(unsigned char * resposta, void * dados, int socket) {
     return NULL;
@@ -228,8 +276,11 @@ int client(int socket) {
                 // printf("TODO Restaura, mano\n");
                 break;
             case 3:
-                printf("TODO Verifica, mano\n");
-                break;
+			    if(!verifica_client(buffer, socket))
+				    fprintf(stderr, "Erro ao realizar a verificação\n");
+			    else
+				    printf("Verificação realizada com sucesso.\n");
+			    break;
             case 0:
                 printf("Saindo\n");
                 executar = 0;
@@ -238,14 +289,13 @@ int client(int socket) {
                 executar = 0;
                 break;
         }
-        printf("executar: %d\n", executar);
     }
 
     free(buffer);
     return 0;
 }
 
-int restaura_client(char *nomeArq, int socket) {
+int restaura_client(char *nome_arq, int socket) {
     FILE *arquivo = NULL;
     unsigned char *recebido = NULL, *enviado = NULL;
 
@@ -254,18 +304,20 @@ int restaura_client(char *nomeArq, int socket) {
     #endif
 
     // envia um pacote pedindo para restaurar o arquivo
-    if(!(enviado = inicializa_pacote(RESTAURA, (unsigned char *)nomeArq, strnlen(nomeArq, TAM_CAMPO_DADOS - 2) + 1))) {
+    if(!(enviado = inicializa_pacote(RESTAURA, (unsigned char *)nome_arq, strnlen(nome_arq, TAM_CAMPO_DADOS - 2) + 1))) {
         fprintf(stderr, "Erro ao inicializar o pacote\n");  
         return 0;
     }
 
     // Envia e espera o pacote OK_TAMANHO
-    do {
+    recebido = stop_n_wait(enviado, socket);
+    while(get_tipo_pacote(recebido) != OK_TAMANHO) {
+        recebido = destroi_pacote(recebido);
         recebido = stop_n_wait(enviado, socket);
         #ifdef DEBUG
             printf("Tipo do pacote é: %d", get_tipo_pacote(recebido));
         #endif
-    } while(get_tipo_pacote(recebido) != OK_TAMANHO);
+    } 
 
     enviado = destroi_pacote(enviado);
 
@@ -292,7 +344,7 @@ int restaura_client(char *nomeArq, int socket) {
     destroi_pacote(recebido);
 
     // Tenta abrir o arquivo
-    if((arquivo = fopen(nomeArq, "w")) == NULL) {
+    if((arquivo = fopen(nome_arq, "w")) == NULL) {
         perror("Erro ao abrir o arquivo");
         return 0;
     }

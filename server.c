@@ -16,18 +16,52 @@ uint64_t recebe_tamanho(int socket);
 /// @param packet pacote com o nome do arquivo
 /// @param socket socket que será utilizado
 /// @return 1 se o arquivo foi salvo corretamente, 0 caso contrário
-int backup(unsigned char * packet, int socket);
+int backup(char * nome_arq, int socket);
 
 /// @brief Restaura o arquivo presente no servidor no cliente
-/// @param nomeArq nome do arquivo
+/// @param nome_arq nome do arquivo
 /// @param socket socket que será utilizado
 /// @return 1 se o arquivo foi restaurado corretamente, 0 caso contrário
-int restaura_server(char *nomeArq, int socket);
+int restaura_server(char *nome_arq, int socket);
 
-int backup(unsigned char * packet, int socket) {
-    char * nome_arquivo = (char *) get_dados_pacote(packet);
-    FILE * arquivo = fopen(nome_arquivo, "w");
-    free(nome_arquivo);
+/// @brief Manda o checksum do arquivo para o cliente
+/// @param nome_arq nome do arquivo
+/// @param socket socket que será utilizado
+/// @return 1 se o checksum foi enviado corretamente, 0 caso contrário
+unsigned int verifica_server(char *nome_arq, int socket);
+
+unsigned int verifica_server(char *nome_arq, int socket) {
+    unsigned int checksum = 0;
+
+    // verifica se o arquivo é acessível
+    if(access(nome_arq, F_OK) == -1) {
+        if(errno == ENOENT) {
+            fprintf(stderr, "Arquivo não encontrado\n");
+        } else if(errno == EACCES) {
+            fprintf(stderr, "Permissão negada\n");
+        } else {
+            fprintf(stderr, "Erro ao acessar o arquivo\n");
+        }
+
+        if(cria_envia_pck(ERRO, &errno, socket, sizeof(int)) < 0) {
+            fprintf(stderr, "Erro ao enviar o pacote de erro\n");
+        }
+        return 0;
+    }
+    // realiza a checksum do arquivo
+    if((checksum = realiza_checksum(nome_arq)) == 0){
+        fprintf(stderr, "Erro ao calcular o checksum do arquivo.\n");
+    }
+
+    if(cria_envia_pck(OK_CHECKSUM, &checksum, socket, sizeof(int)) < 0) {
+        fprintf(stderr, "Erro ao enviar o checksum do arquivo.\n");
+    }
+
+    return 1;
+}
+
+int backup(char * nome_arq, int socket) {
+    FILE * arquivo = fopen(nome_arq, "w");
     unsigned char * pacote = NULL;
     uint64_t tamanho = 0;
 
@@ -86,7 +120,7 @@ uint64_t recebe_tamanho(int socket) {
 
     if(!ha_memoria_suficiente(data)) {
         destroi_pacote(recebido_cliente);
-        if((cria_envia_pck(ERRO, 0, (char *) MSG_ERR_ESPACO, socket, 0)) < 0) 
+        if((cria_envia_pck(ERRO, (char *) MSG_ERR_ESPACO, socket, 0)) < 0) 
             fprintf(stderr, "Erro ao enviar o pacote de erro\n");
 
         fprintf(stderr, "Erro: Memória insuficiente\n");
@@ -96,33 +130,41 @@ uint64_t recebe_tamanho(int socket) {
     #ifdef DEBUG
         printf("Espaço suficiente\n");
     #endif
-    cria_envia_pck(OK, 0, NULL, socket, 0);
+    cria_envia_pck(OK, NULL, socket, 0);
     // liberando o pacote
     destroi_pacote(recebido_cliente);
     return data;
 }
 
 void trata_pacote(unsigned char * packet, int socket) {
+    char * nome_arquivo = NULL;
     switch (get_tipo_pacote(packet)) {
     case BACKUP:
-        if(backup(packet, socket)) 
+        nome_arquivo = (char *) get_dados_pacote(packet);
+        if(!backup(nome_arquivo, socket)) 
             fprintf(stderr, "Erro ao realizar o backup\n");
         else 
             printf("Backup completo.\n");
-        
         break;
     case RESTAURA:
-        char * nome_arquivo = (char *) get_dados_pacote(packet);
-        if(!(restaura_server(nome_arquivo, socket))) 
-            fprintf(stderr, "Erro ao realizar o backup\n");
+        nome_arquivo = (char *) get_dados_pacote(packet);
+        if(!restaura_server(nome_arquivo, socket)) 
+            fprintf(stderr, "Erro ao realizar a restauração\n");
         else 
-            printf("Backup realizado com sucesso\n");
-        free(nome_arquivo);
+            printf("Restauração realizada com sucesso\n");
         break;
     case VERIFICA:
+        nome_arquivo = (char *) get_dados_pacote(packet);
+        if(!verifica_server(nome_arquivo, socket)) 
+            fprintf(stderr, "Erro ao realizar a verificação\n");
+        else
+            printf("Verificação realizada com sucesso.\n");
         break;
     default:
+        fprintf(stderr, "trata_pacote: requisição do tipo incorreta.\n");
         break;
+
+        if(nome_arquivo) free(nome_arquivo);
     }
 }
 
@@ -145,12 +187,12 @@ int server(int socket) {
     return 0;
 }
 
-int restaura_server(char *nomeArq, int socket) {
+int restaura_server(char *nome_arq, int socket) {
     FILE *arquivo = NULL;
     unsigned char *recebido = NULL, *enviado = NULL;
     uint64_t tamanho = 0;
 
-    if((arquivo = fopen(nomeArq, "r")) == NULL) {
+    if((arquivo = fopen(nome_arq, "r")) == NULL) {
         perror("Erro ao abrir o arquivo");
         return 0;
     }

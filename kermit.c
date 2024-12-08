@@ -259,12 +259,12 @@ unsigned char crc(unsigned char *packet, int tamanho) {
     return crc;
 }
 
-int insere_envia_pck(unsigned char * packet, char * dados, int tamanho, int socket) {
+int insere_envia_pck(unsigned char * packet, void * dados, int tamanho, int socket) {
     insere_dados_pacote(packet, dados, tamanho);
     return envia_pacote(packet, socket);
 }
 
-int cria_envia_pck(char tipo, char sequencia, char * dados, int socket, int tamanho) {
+int cria_envia_pck(char tipo, void * dados, int socket, int tamanho) {
     // tamanho = tamamnho do campo de dados
     unsigned char * packet = NULL;
     int retorno = 1;
@@ -283,11 +283,11 @@ int cria_envia_pck(char tipo, char sequencia, char * dados, int socket, int tama
 }
 
 int envia_ack(int socket) {
-    return cria_envia_pck(ACK, 0, NULL, socket, 0);
+    return cria_envia_pck(ACK, NULL, socket, 0);
 }
 
 int envia_nack(int socket) {
-    return cria_envia_pck(NACK, 0, NULL, socket, 0);
+    return cria_envia_pck(NACK, NULL, socket, 0);
 }
 
 char *get_ethernet_interface_name() {
@@ -768,4 +768,38 @@ unsigned int count_TPID(unsigned char * buffer, unsigned int tamanho) {
         if(buffer[i] == 0x81) counter++;
 
     return counter;
+}
+
+unsigned int realiza_checksum(char * nome_arq){
+    FILE *fp; // Ponteiro para o pipe
+    char saida[128]; // Buffer para armazenar a saída do comando
+    unsigned int checksum;
+
+    char *comando = NULL;
+        // checksum do arquivo
+    comando = calloc(strlen("cksum ") + strlen(nome_arq) + 1, sizeof(char));
+
+    if(!comando) {
+        perror("Erro ao alocar memória para o comando cksum");
+        return 0;
+    }
+
+    sprintf(comando, "cksum %s", nome_arq);
+    // Executa o comando cksum e captura sua saída
+    fp = popen(comando, "r");
+    if (!fp) {
+        perror("Erro ao executar o comando de checksum");
+        free(comando);
+        return 0;
+    }
+
+    // Lê a saída do comando e obtém o checksum local
+    if (fgets(saida, sizeof(saida), fp) != NULL) {
+        sscanf(saida, "%u", &checksum); // Extrai o checksum da saída
+    }
+
+    pclose(fp); // Fecha o pipe
+    free(comando); // Libera a memória alocada para o comando
+
+    return checksum;
 }
