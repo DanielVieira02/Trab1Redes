@@ -10,13 +10,12 @@ int main(int argc, char * argv[]) {
 
     int isClient = (atoi(argv[1]) == 1);
     char *nome_socket = get_ethernet_interface_name();
-        socket = ConexaoRawSocket("lo");
+    socket = ConexaoRawSocket(nome_socket);
     if(isClient) {
         client(socket);
     } else {
         server(socket);
     }
-
     free(nome_socket);
     return 0;
 }

@@ -3,6 +3,12 @@
 uint64_t SEQUENCIA_RECEBE = 0;
 uint64_t SEQUENCIA_ENVIA = 0;
 
+long long timestamp() {
+    struct timeval tp;
+    gettimeofday(&tp, NULL);
+    return tp.tv_sec*1000 + tp.tv_usec/1000;
+}
+
 void aumenta_sequencia(int sequencia) {
     if(sequencia == ENVIA) {
         SEQUENCIA_ENVIA = (SEQUENCIA_ENVIA + 1) % (1 << 5);
@@ -37,7 +43,8 @@ unsigned char * inicializa_pacote(char tipo, void * dados, int tamanho) {
     }
     set_marcador(packet, MARCADOR_INICIO);
     set_tamanho(packet, tamanho);
-    set_sequencia(packet, SEQUENCIA_ENVIA);
+    if(tipo == NACK) set_sequencia(packet, SEQUENCIA_RECEBE);
+    else set_sequencia(packet, SEQUENCIA_ENVIA);
     set_tipo(packet, tipo);
     set_dados(packet, dados);
     set_crc(packet);
@@ -139,59 +146,30 @@ void print_pacote(unsigned char * packet) {
     free(dados);
 }
 
-unsigned char * recebe_pacote(int socket) {
-    unsigned char * packet = (unsigned char *) calloc(1, TAM_PACOTE_BYTES);
-    int buffer_length = 0, crc_valor = 0;
+int recebe_pacote(int socket, unsigned char *packet, int timeoutMillis, int com_timeout) {
+    int bytes_lidos = 0;
+    long long comeco = timestamp();
+    struct timeval timeout = { .tv_sec = timeoutMillis/1000, .tv_usec = (timeoutMillis%1000) * 1000 };
 
-    // Recebe o pacote
-    if((buffer_length = recv(socket, packet, TAM_PACOTE_BYTES, 0)) < 0) {
-        perror("Erro ao receber o pacote");
-        destroi_pacote(packet); 
-        return NULL;
-    }
+    if(com_timeout)
+        setsockopt(socket, SOL_SOCKET, SO_RCVTIMEO, (char*) &timeout, sizeof(timeout)); // seta o timeout do socket
 
-    // Verifica se o marcador de início está correto
-	if (get_marcador_pacote(packet) != MARCADOR_INICIO) {
-        destroi_pacote(packet);
-	    return NULL;
-	}   
+    do {
+		// Recebe o pacote
+		bytes_lidos = recv(socket, packet, TAM_MAX_PACOTE_SUJO, 0);
 
-    // retira os 0xFF
-    if(!(packet = analisa_retira(packet))){
-        perror("Erro ao realocar o pacote");
-        return 0;
-    }
+		// Verifica se o marcador de início está correto
+		if(bytes_lidos != -1 && get_marcador_pacote(packet) == MARCADOR_INICIO) {
+            #ifdef DEBUG
+                printf("Pacote recebido\n");
+                print_pacote(packet);
+            #endif
+            break;
+        }
+	} while(com_timeout ? timestamp() - comeco <= timeoutMillis : 1);
 
-    #ifdef DEBUG
-        printf("\n\nPacote recebido\n");
-        print_pacote(packet);
-    #endif
 
-    // Analise CRC
-    crc_valor = crc(packet, get_tamanho_pacote(packet)+3);
-    if(crc_valor != 0) {
-        fprintf(stderr, "Erro no CRC\n");
-        printf("CRC: %d\n", crc_valor);
-        envia_nack(socket);
-        return NULL;
-    }
-
-    #ifdef DEBUG
-        printf("CRC OK\n\n\n");
-    #endif
-
-    while(get_sequencia_pacote(packet) != SEQUENCIA_RECEBE) {
-        #ifdef DEBUG
-            printf("Esperavamos o pacote %lu, recebemos %u\n", SEQUENCIA_RECEBE, get_sequencia_pacote(packet));
-        #endif
-        envia_nack(socket);
-        destroi_pacote(packet);
-        return NULL;
-    }
-
-    aumenta_sequencia(RECEBE);
-
-	return packet;
+	return bytes_lidos;
 }
 
 size_t calcula_tamanho_pacote(unsigned char * packet) {
@@ -226,21 +204,19 @@ int envia_pacote(unsigned char * packet, int socket) {
 }
 
 
-unsigned char * stop_n_wait(unsigned char * packet, int socket) {
+unsigned char * stop_n_wait(unsigned char * packet, char tipo, int socket) {
 
     unsigned char * resposta = NULL;
-    int correto = 0;
-    // envia_pacote usa ponteiro de ponteiro pois pode haver realocações
-    if(envia_pacote(packet, socket) < 0) return NULL;
-    while(!correto){
-        if((resposta = recebe_pacote(socket)) == NULL)
-            continue;
+    int recebendo_nacks = 1;
 
-        // se for nack, envia novamente
-        if(get_tipo_pacote(resposta) == NACK) {
-            envia_pacote(packet, socket);
-        } else 
-            correto = 1;
+    while(recebendo_nacks == 1){
+        if(envia_pacote(packet, socket) < 0) return NULL;
+        if(!(resposta = espera_pacote(socket, tipo, 1))) return NULL;
+        else if(get_tipo_pacote(resposta) != NACK) {
+            recebendo_nacks = 0;
+        } else if (get_tipo_pacote(resposta) == NACK){ // Ta pedindo um pacote que já foi enviado, mas nao chegou no destino
+            diminui_sequencia(ENVIA);
+        }
     }
     
     return resposta;
@@ -267,19 +243,19 @@ int insere_envia_pck(unsigned char * packet, void * dados, int tamanho, int sock
 int cria_envia_pck(char tipo, void * dados, int socket, int tamanho) {
     // tamanho = tamamnho do campo de dados
     unsigned char * packet = NULL;
-    int retorno = 1;
+    int bytes_enviados = 0;
 
     if(!dados)
         packet = inicializa_pacote(tipo, NULL, 0);
     else 
         packet = inicializa_pacote(tipo, (unsigned char *)dados, tamanho);
 
-    if(envia_pacote(packet, socket) < 0) {
+    if((bytes_enviados = envia_pacote(packet, socket)) == -1) {
         fprintf(stderr, "Erro ao enviar pacote\n");
-        retorno = -1;
     }
 
-    return retorno;
+    packet = destroi_pacote(packet);
+    return bytes_enviados;
 }
 
 int envia_ack(int socket) {
@@ -313,13 +289,9 @@ char *get_ethernet_interface_name() {
         if (ifa->ifa_flags & IFF_LOOPBACK)
             continue;
 
-        // Verificar se a interface está ativa
-        if (ifa->ifa_flags) {
-            // Copiar o nome da interface (primeira interface Ethernet encontrada)
-            interface_name = strdup(ifa->ifa_name);
-            break;
-        }
-    }
+		interface_name = strdup(ifa->ifa_name);
+		break;
+	}
 
     freeifaddrs(ifaddr);
     return interface_name;
@@ -327,12 +299,14 @@ char *get_ethernet_interface_name() {
 
 unsigned char get_marcador_pacote(unsigned char * packet){
     int byte = OFFSET_MARCADOR/8; // o byte atual é este.
+    if(!packet) return 0;
 
     return packet[byte];
 }
 
 unsigned char get_tamanho_pacote(unsigned char * packet) {
     int byte = OFFSET_TAM / 8; // o byte atual é este.
+    if(!packet) return 0;
 
     return (packet[byte] & (0b11111100)) >> 2;
 }
@@ -340,6 +314,7 @@ unsigned char get_tamanho_pacote(unsigned char * packet) {
 unsigned int get_sequencia_pacote(unsigned char * packet) {
     int byte = OFFSET_SEQ/8; // o byte atual é este.
     unsigned int sequencia = 0;
+    if(!packet) return 0;
 
     sequencia = (packet[byte] & (0b11)) << 3;
     sequencia |= (packet[byte + 1] & (0b11100000)) >> 5;
@@ -348,6 +323,7 @@ unsigned int get_sequencia_pacote(unsigned char * packet) {
 
 unsigned char get_tipo_pacote(unsigned char * packet) {
     int byte = OFFSET_TIPO/8; // o byte atual é este.
+    if(!packet) return 0;
 
     return packet[byte] & (0b11111);
 }
@@ -368,8 +344,11 @@ void * get_dados_pacote(unsigned char * packet) {
 
 
 unsigned char get_CRC(unsigned char * packet) {
-    unsigned int byte_inicial = (OFFSET_DADOS/8) + get_tamanho_pacote(packet); // o byte atual é este.
-    
+    unsigned int byte_inicial;
+
+    if(!packet) return 0;
+    byte_inicial = (OFFSET_DADOS/8) + get_tamanho_pacote(packet); // o byte atual é este.
+
     return packet[byte_inicial];
 }
 
@@ -510,9 +489,13 @@ int recebe_fluxo_dados(FILE * arquivo, int socket) {
 
     #ifdef DEBUG
         printf("Iniciando o fluxo de dados\n");
+        printf("enviando OK\n");
     #endif
-    if(!(recebido = recebe_pacote(socket))) {
-        fprintf(stderr, "server_backup: Erro ao receber primeiro pacote no fluxo de dados\n");
+
+    // envia o pacote de OK
+    if(!(recebido = cria_stop_wait(OK, NULL, 0, DADOS, socket))) {
+        fprintf(stderr, "Erro ao receber primeiro pacote de dados\n");
+        if(recebido) recebido = destroi_pacote(recebido);
         return 0;
     }
 
@@ -521,16 +504,6 @@ int recebe_fluxo_dados(FILE * arquivo, int socket) {
     #endif
     // Enquanto não for o fim dos dados
     while(get_tipo_pacote(recebido) != FIM_DADOS) { 
-        // Verifica se o pacote recebido é do tipo correto
-        while(get_tipo_pacote(recebido) != DADOS){
-            #ifdef DEBUG
-                printf("Destruindo o pacote recebido devido ao tipo errado\n");
-            #endif
-            envia_nack(socket);
-            destroi_pacote(recebido);
-            recebido = recebe_pacote(socket);
-        }
-
         // Se tudo der certo, escreve no arquivo
         dados = get_dados_pacote(recebido);
         if((fwrite(dados, sizeof(char), get_tamanho_pacote(recebido), arquivo)) == 0) {
@@ -541,20 +514,15 @@ int recebe_fluxo_dados(FILE * arquivo, int socket) {
 
         // Envia ACK e recebe o próximo pacote
         destroi_pacote(recebido);
-        envia_ack(socket);
-        while(!(recebido = recebe_pacote(socket)));
-    }
 
-    // Verifica se o último pacote é do tipo correto
-    while(get_tipo_pacote(recebido) != FIM_DADOS) {
-        #ifdef DEBUG
-            printf("Destruindo o pacote recebido devido ao tipo errado\n");
-            printf("server_backup: Ultimo pacote não é do tipo FIM_DADOS\n");
-        #endif
-        envia_nack(socket);
-        destroi_pacote(recebido);
-        recebido = recebe_pacote(socket);
-    }
+		do {
+			if(!(recebido = cria_stop_wait(ACK, NULL, 0, QUALQUER_TIPO, socket))) {
+				fprintf(stderr, "Erro ao receber pacote de dados\n");
+				if(recebido) recebido = destroi_pacote(recebido);
+				return 0;
+			}
+		} while(get_tipo_pacote(recebido) != DADOS && get_tipo_pacote(recebido) != FIM_DADOS);
+	}
 
     // como o ultimo pacote é vazio, não é necessário escrever no arquivo
     // manda apenas um ack
@@ -587,24 +555,16 @@ int envia_fluxo_dados(FILE * arquivo, uint64_t tamanho, int socket) {
             return 0;
         }
 
-        recebido = stop_n_wait(enviado, socket); // Envia e espera o pacote ACK
-        
-        // enquanto der erro no CRC, timeout ou o pacote recebido não for do tipo correto
-		while(get_tipo_pacote(recebido) != ACK) {
-            #ifdef DEBUG
-                printf("Destruindo o pacote recebido devido ao tipo errado\n");
-            #endif
-			recebido = destroi_pacote(recebido);
-			recebido = stop_n_wait(enviado, socket);
-			if(get_tipo_pacote(recebido) == ERRO) {
-				fprintf(stderr, "Erro específico do servidor\n");
-				return 0;
-			}
-		}
+        // Envia e espera o pacote ACK
+        if(!(recebido = stop_n_wait(enviado, ACK, socket))) {
+            fprintf(stderr, "Erro ao aloca memória para o pacote\n");
+            free(buffer);
+            return 0;
+        }
 
 		// destroi os pacotes
         recebido = destroi_pacote(recebido);
-        enviado = destroi_pacote(enviado);   
+        enviado = destroi_pacote(enviado);
     }
 
     // escreve o resto dos dados
@@ -624,20 +584,12 @@ int envia_fluxo_dados(FILE * arquivo, uint64_t tamanho, int socket) {
             return 0;
         }
 
-        recebido = stop_n_wait(enviado, socket);
-
-        // enquanto der erro no CRC, timeout ou o pacote recebido não for do tipo correto
-		while(get_tipo_pacote(recebido) != ACK) {
-            #ifdef DEBUG
-                printf("Destruindo o pacote recebido devido ao tipo errado\n");
-            #endif
-			recebido = destroi_pacote(recebido);
-			recebido = stop_n_wait(enviado, socket);
-			if(get_tipo_pacote(recebido) == ERRO) {
-				fprintf(stderr, "Erro específico do servidor\n");
-				return 0;
-			}
-		}
+        // Envia e espera o pacote ACK
+        if(!(recebido = stop_n_wait(enviado, ACK, socket))) {
+            fprintf(stderr, "Erro ao aloca memória para o pacote\n");
+            free(buffer);
+            return 0;
+        }
 
         recebido = destroi_pacote(recebido);
         enviado = destroi_pacote(enviado);
@@ -646,8 +598,11 @@ int envia_fluxo_dados(FILE * arquivo, uint64_t tamanho, int socket) {
     // envia um ultimo pacote vazio
     enviado = inicializa_pacote(FIM_DADOS, NULL, 0);
 
-    while((recebido = stop_n_wait(enviado, socket)) == NULL || get_tipo_pacote(recebido) != ACK) {
-        fprintf(stderr, "Erro ao enviar o último pacote, enviando novamente.\n");
+    // Envia e espera o pacote ACK
+    if(!(recebido = stop_n_wait(enviado, ACK, socket))) {
+        fprintf(stderr, "Erro ao aloca memória para o pacote\n");
+        free(buffer);
+        return 0;
     }
 
     enviado = destroi_pacote(enviado);
@@ -656,30 +611,34 @@ int envia_fluxo_dados(FILE * arquivo, uint64_t tamanho, int socket) {
     return 1;
 }
 
-int ajusta_pacote(unsigned char ** packet) {
-    unsigned char * buffer = NULL;
+int ajusta_pacote(unsigned char **packet) {
+    unsigned char *buffer1 = NULL;
     int tamanho = calcula_tamanho_pacote(*packet);
 
-    // se os dados não preencherem o pacote, preenche com 0
-    if(tamanho < 14) { 
-        if((buffer = realloc(*packet, 14)) == NULL) {
+    // Se os dados não preencherem o pacote, preenche com 0
+    if (tamanho < 14) { 
+        buffer1 = realloc(*packet, 14);
+        if (!buffer1) {
             perror("Erro ao realocar o pacote");
             destroi_pacote(*packet);
+            *packet = NULL; // Garante que o ponteiro não seja usado após desalocar
             return 0;
         }
 
-        // realoca o pacote, é usado buffer pois o realloc pode falhar, assim o packet seria nulo
-        *packet = buffer;
+        // Atualiza o ponteiro e preenche com zeros a nova região
+        *packet = buffer1;
         memset(&(*packet)[tamanho], 0, 14 - tamanho);
     }
 
-    if(!(*packet = analisa_insere(*packet))){
-        perror("Erro ao realocar o pacote");
+    // Analisa e ajusta o pacote, liberando o antigo caso necessário
+    if(!analisa_insere(packet)) {
+        perror("Erro ao ajustar o pacote");
+        *packet = destroi_pacote(*packet);
         return 0;
     }
-
     return 1;
 }
+
 
 u_int64_t ha_memoria_suficiente(u_int64_t tamanho) {
     struct statvfs fs;
@@ -688,77 +647,80 @@ u_int64_t ha_memoria_suficiente(u_int64_t tamanho) {
     // Obtém informações sobre o sistema de arquivos
     if (statvfs("/", &fs) == -1) {
         fprintf(stderr, "server_backup: Erro ao obter informações sobre o sistema de arquivos\n");
-        return 0;
+        return errno;
     }
 
     espaco = fs.f_bsize * fs.f_bavail;  // Calcula espaço disponível em bytes
 
     if (espaco < tamanho) { // Verifica se há espaço suficiente
         fprintf(stderr, "server_backup: Espaço insuficiente\n");
-        return 0;
+        return ENOMEM;
     }
 
-    return 1;
+    return 0;
 }
 
-unsigned char * analisa_insere(unsigned char * packet) {
+int analisa_insere(unsigned char ** packet) {
     unsigned char * copia_packet = NULL;
     int ocorrencias = 0;
 
-    if(!packet) return NULL;
+    if(!(*packet)) return 0;
 
     // primeiro conta as ocorrencias
-    for(size_t byte = 0; byte < calcula_tamanho_pacote(packet); byte++) {
-        if(packet[byte] == 0x81) {
+    for(size_t byte = 0; byte < calcula_tamanho_pacote(*packet); byte++) {
+        if((*packet)[byte] == 0x81) {
             ocorrencias++;
         }
     }
 
-    // se nao tiver nenhuma ocorrencia, apenas retorna o packet
-    if(ocorrencias == 0) return packet;
+    // se nao tiver nenhuma ocorrencia, apenas retorna o pacote
+    if(ocorrencias == 0) return 1;
 
     // aloca e insere os 0xFF
-    copia_packet = (unsigned char *)calloc(calcula_tamanho_pacote(packet) + ocorrencias, 1);
+    if(!(copia_packet = (unsigned char *)calloc(calcula_tamanho_pacote(*packet) + ocorrencias, 1))) {
+        return 0;
+    }
 
-    for(size_t i = 0, j = 0; j < calcula_tamanho_pacote(packet); j++) {
-        copia_packet[i++] = packet[j];
+    for(size_t i = 0, j = 0; j < calcula_tamanho_pacote(*packet); j++) {
+        copia_packet[i++] = (*packet)[j];
         
         // quando for 0x81, insere um 0xFF
-        if(packet[j] == 0x81) {
+        if((*packet)[j] == 0x81) {
             copia_packet[i++] = 0xFF;
         }
     }
 
-    packet = destroi_pacote(packet);
-    packet = copia_packet;
-
-    return packet;
+    *packet = destroi_pacote(*packet);
+    *packet = copia_packet;
+    return 1;
 }
 
-/// @brief Função que analisa o pacote e procura casos em que há 0x81, que é a tag do protocolo VLAN, retira os 0xFF após para evitar o problema
-/// @param packet pacote que será alterado
-/// @return pacote com as análises feitas
-unsigned char * analisa_retira(unsigned char * packet) {
-    unsigned char * copia_packet = NULL;
+int analisa_retira(unsigned char **packet) {
+    unsigned char *copia_packet = NULL;
 
-    if(!packet) return NULL;
+    if (!(*packet)) return 0;
 
-    // aloca e retira os 0xFF
-    copia_packet = (unsigned char *)calloc(calcula_tamanho_pacote(packet), 1);
+    size_t tamanho = calcula_tamanho_pacote(*packet);
+    
+    // Aloca nova memória para o novo pacote
+    copia_packet = calloc(tamanho, 1);
+    if (!copia_packet) {
+        perror("Erro ao alocar memória para copia_packet");
+        return 0;
+    }
 
-    for(size_t i = 0, j = 0; j < TAM_PACOTE_BYTES && i < calcula_tamanho_pacote(packet); j++) {
-        // quando for 0x81 e 0xff, retira o 0xFF
-        if(packet[j] == 0x81 && packet[j + 1] == 0xFF) {
-            copia_packet[i++] = packet[j++];
+    for (size_t i = 0, j = 0; j < TAM_MAX_PACOTE_SUJO && i < tamanho; j++) {
+        if ((*packet)[j] == 0x81 && (*packet)[j + 1] == 0xFF) {
+            copia_packet[i++] = (*packet)[j++];
         } else {
-            copia_packet[i++] = packet[j];
+            copia_packet[i++] = (*packet)[j];
         }
     }
 
-    packet = destroi_pacote(packet);
-    packet = copia_packet;
-
-    return packet;
+    *packet = destroi_pacote(*packet);
+    *packet = copia_packet;
+    
+    return 1;
 }
 
 unsigned int count_TPID(unsigned char * buffer, unsigned int tamanho) {
@@ -802,4 +764,196 @@ unsigned int realiza_checksum(char * nome_arq){
     free(comando); // Libera a memória alocada para o comando
 
     return checksum;
+}
+
+int analisa_pacote(unsigned char ** packet, char tipo) {
+    unsigned char crc_valor = 0;
+
+	// retira os 0xFF
+    if(!(analisa_retira((packet)))){
+        perror("Erro ao realocar o pacote");
+        return 0;
+    }
+
+    if(!(*packet)) return 0;
+    // Analise CRC
+    crc_valor = crc((*packet), get_tamanho_pacote((*packet))+3);
+    if(crc_valor != 0) {
+        #ifdef DEBUG
+            fprintf(stderr, "Erro no CRC\n");
+        #endif
+        return 0;
+    }
+
+    #ifdef DEBUG
+        printf("CRC OK\n\n\n");
+    #endif
+
+    // verifica se o pacote é nack, aqui nao importa a sequencia estar certa, já que ela se refere ao pacote perdido
+    if(get_tipo_pacote((*packet)) == NACK) {
+        #ifdef DEBUG
+            printf("Pacote é um NACK\n");
+        #endif
+        return 1;
+    }
+
+    if(get_sequencia_pacote((*packet)) != SEQUENCIA_RECEBE) {
+        #ifdef DEBUG
+            printf("Esperavamos o pacote %lu, recebemos %u\n", SEQUENCIA_RECEBE, get_sequencia_pacote((*packet)));
+        #endif
+        return 0;
+    }
+
+    // verifica se é esperado prováveis erros e se o pacote é de erro
+    if(get_tipo_pacote((*packet)) == ERRO && 
+        (tipo == OK_TAMANHO || tipo == OK_CHECKSUM || tipo == OK)) {
+        return 1;
+    }
+
+
+    // Verifica se o tipo do pacote é um dos primeiros que o servidor tem que receber
+    if(tipo == REQUISICAO_CLIENT && 
+        (get_tipo_pacote((*packet)) == BACKUP || get_tipo_pacote((*packet)) == RESTAURA || get_tipo_pacote((*packet)) == VERIFICA))
+    {
+        return 1;
+    }
+
+    // Verifica se o tipo do pacote é o esperado e se é esperado algum tipo em específico
+    if(get_tipo_pacote((*packet)) != tipo && tipo != QUALQUER_TIPO) {
+        #ifdef DEBUG
+            printf("Tipo de pacote incorreto\n");
+        #endif
+        return 0;
+    }
+
+    return 1;
+}
+
+unsigned char * espera_pacote(int socket, char tipo, int com_timeout) {
+    unsigned char * packet = NULL;
+    int bytes_lidos = 0;
+    uint64_t timeout = 1000;
+
+    // recebe pacote até que seja do tipo correto
+	while(1){
+        if(!(packet = (unsigned char *) calloc(TAM_MAX_PACOTE_SUJO, 1))) {
+            perror("Erro ao alocar memória para o pacote");
+            return NULL;
+        }
+		while((bytes_lidos = recebe_pacote(socket, packet, timeout, com_timeout)) == -1) {
+            fprintf(stderr, "Erro de timeout, enviando um NACK\n");
+			envia_nack(socket);  // envia nack, já que houve timeout
+            diminui_sequencia(ENVIA);
+			timeout *= 2;        // timeout exponencial
+		}
+
+        // Se passar na analise ou o NACK pedir o que já foi enviado
+		if(analisa_pacote(&packet, tipo) || (get_tipo_pacote(packet) == NACK && get_sequencia_pacote(packet) == RECEBE)){ break; }
+
+        packet = destroi_pacote(packet); // pacote interpretado como lixo
+    }
+
+    if(get_tipo_pacote(packet) != NACK)
+        aumenta_sequencia(RECEBE);
+
+    return packet;
+}
+
+
+void imprime_erro(unsigned char * packet) {
+    unsigned int * dados = (unsigned int *) get_dados_pacote(packet);
+
+    fprintf(stderr, "Erro: ");
+	switch(*dados) {
+        case MSG_ERR_ACESSO:
+            fprintf(stderr, "Erro de acesso ");
+            break;
+        case MSG_ERR_ESPACO:
+            fprintf(stderr, "Espaço insuficiente ");
+            break;
+        case MSG_ERR_NAO_ENCONTRADO:
+            fprintf(stderr, "Arquivo não encontrado ");
+            break;
+    }
+
+    free(dados);
+    return;
+}
+
+uint64_t get_tamanho_arquivo(char * nome_arq) {
+    struct stat st;
+
+    if(stat(nome_arq, &st) == -1) {
+        perror("Erro ao obter informações do arquivo");
+        return 0;
+    }
+
+    return st.st_size;
+}
+
+uint64_t testa_arquivo(char * nome_arq, int socket) {
+    struct stat st;
+    int err = 0;
+
+    // printando localmente
+    if(stat(nome_arq, &st) == -1) {
+        fprintf(stderr, "Erro ao obter informações do arquivo: %s\n", strerror(errno));
+        if(errno == EACCES)
+            err = MSG_ERR_ACESSO;
+        else if(errno == ENOENT)
+            err = MSG_ERR_NAO_ENCONTRADO;
+    }
+
+
+	if(err == EACCES || err == MSG_ERR_NAO_ENCONTRADO){ // se houver algum tipo de erro
+		if(cria_envia_pck(ERRO, &err, socket, sizeof(int)) < 0) {
+			fprintf(stderr, "Erro ao enviar o pacote de erro\n");
+		}
+    }
+
+    #ifdef DEBUG
+        if(!err) printf("Sem erro ao acessar o arquivo\n");
+        else printf("Com erro ao acessar o arquivo\n");
+    #endif
+
+	return err;
+}
+
+unsigned char * cria_stop_wait(char tipo_enviado, void * dados, int tamanho, char tipo_esperado, int socket) {
+    unsigned char * enviado = NULL, * recebido = NULL;
+    #ifdef DEBUG
+        printf("tipo enviado = %d\n", tipo_enviado);
+    #endif
+    // cria um pacote com o nome do arquivo no campo de dados
+    if(!(enviado = inicializa_pacote(tipo_enviado, dados, tamanho))) {
+        fprintf(stderr, "Erro ao inicializar o pacote de envio\n");
+        return NULL;
+    }
+
+    // Envia e espera o pacote
+    if(!(recebido = stop_n_wait(enviado, tipo_esperado, socket))) {
+        fprintf(stderr, "Erro ao alocar inicializar o pacote de resposta\n");
+        enviado = destroi_pacote(enviado);
+        if(recebido) recebido = destroi_pacote(recebido);
+        return NULL;
+    }
+
+    enviado = destroi_pacote(enviado);
+    return recebido;
+}
+
+int testa_memoria(uint64_t tamanho, int socket) {
+    int stts = 0;
+    if((stts = ha_memoria_suficiente(tamanho))) {
+        if(stts == ENOMEM) {
+		    fprintf(stderr, "Erro: Memória insuficiente %s\n", strerror(stts));
+			// cria e envia um pacote de erro
+			if((cria_envia_pck(ERRO, &stts, socket, sizeof(char)) == -1)) {
+				fprintf(stderr, "Erro ao enviar o pacote de erro\n");
+				return 0;
+			}
+        }
+        return 0;
+    }
+    return 1;
 }
