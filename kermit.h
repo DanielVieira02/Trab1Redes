@@ -21,6 +21,8 @@
 #include <errno.h>
 #include <math.h>
 #include <inttypes.h>
+#include <unistd.h>
+#include <errno.h>
 #define _FILE_OFFSET_BITS 64
 
 #define MARCADOR_INICIO 0b01111110
@@ -113,16 +115,15 @@ unsigned char get_tamanho_pacote(unsigned char * packet);
 /// @param tamanho o tamanho dos dados
 /// @param socket o socket que sera utilizado
 /// @return Retorna 1 se o pacote foi enviado, -1 por erro no envio (função send)
-int insere_envia_pck(unsigned char * packet, char * dados, int tamanho, int socket);
+int insere_envia_pck(unsigned char * packet, void * dados, int tamanho, int socket);
 
 /// @brief Cria e envia o pacote, no final destroi o pacote
 /// @param tipo tipo do pacote
-/// @param sequencia qual é o indice do pacote
 /// @param dados dados que serão enviados
 /// @param tamanho tamanho do campo de dados
 /// @param socket socket que será utilizado
 /// @return Retorna 1 se o pacote foi enviado, -1 por erro no envio (função send)
-int cria_envia_pck(char tipo, char sequencia, char * dados, int socket, int tamanho);
+int cria_envia_pck(char tipo, void * dados, int socket, int tamanho);
 
 /// @brief Envia o pacote ACK, que é um pacote vazio
 /// @param socket socket que será utilizado
@@ -267,4 +268,9 @@ unsigned char * analisa_retira(unsigned char * packet);
 /// @param tamanho tamanho do buffer
 /// @return quantidade de TPID no buffer
 unsigned int count_TPID(unsigned char * buffer, unsigned int tamanho);
+
+/// @brief Realiza o checksum do arquivo dado como argumento
+/// @param nome_arq Nome do arquivo 
+/// @return retorna o checksum do arquivo, retorna 0 se deu erro
+unsigned int realiza_checksum(char * nome_arq);
 #endif
