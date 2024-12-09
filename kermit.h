@@ -23,9 +23,14 @@
 #include <inttypes.h>
 #include <unistd.h>
 #include <errno.h>
+#include <sys/time.h>
+#include <sys/stat.h>
 #define _FILE_OFFSET_BITS 64
 
 #define MARCADOR_INICIO 0b01111110
+
+#define QUALQUER_TIPO           0b01010
+#define REQUISICAO_CLIENT       0b00011
 
 #define ACK                     0b00000
 #define NACK                    0b00001
@@ -50,8 +55,8 @@
 #define TAM_CAMPO_TIPO          5
 #define TAM_CAMPO_DADOS         64
 #define TAM_CAMPO_CRC           8
-#define TAM_PACOTE              544
-#define TAM_PACOTE_BYTES        133
+#define TAM_MAX_PACOTE          67
+#define TAM_MAX_PACOTE_SUJO     133
 
 #define OFFSET_MARCADOR         0
 #define OFFSET_TAM              8
@@ -101,8 +106,8 @@ void print_pacote(unsigned char * packet);
 
 /// @brief Recebe o pacote do socket
 /// @param socket
-/// @return Retorna o pacote recebido, NULL se ocorrer erro no CRC ou timeout
-unsigned char * recebe_pacote(int socket);
+/// @return Retorna o número de bytes lidos, sendo -1 se houver erro
+int recebe_pacote(int socket, unsigned char *packet, int timeoutMillis, int com_timeout);
 
 /// @brief tamanho do pacote (5 bits)
 /// @param packet 
@@ -137,9 +142,12 @@ int envia_nack(int socket);
 
 /// @brief  Função que implementa o protocolo stop-and-wait
 /// @param packet pacote que será enviado
+/// @param tipo tipo do pacote que se espera
 /// @param socket socket que será utilizado
-/// @return Retorna a resposta do pacote enviado, NULL se ocorrer erro no CRC ou timeout
-unsigned char * stop_n_wait(unsigned char * packet, int socket);
+/// @return Retorna a resposta do pacote enviado, NULL se ocorrer erro na alocação de memória.
+////
+/// OBS: Caso seja recebido um pacote de erro, o stop_n_wait retornará um pacote de ERRO, não um do tipo esperado
+unsigned char * stop_n_wait(unsigned char * packet, char tipo, int socket);
 
 /// @brief Envia um pacote
 /// @param packet pacote que será enviado
@@ -247,7 +255,7 @@ int ajusta_pacote(unsigned char ** packet);
 
 /// @brief Função que verifica se há memória suficiente para alocar um pacote
 /// @param tamanho tamanho do pacote
-/// @return Retorna 1 se houver memória suficiente, 0 caso contrário
+/// @return Retorna 0 se houver memória suficiente, errno caso contrário
 u_int64_t ha_memoria_suficiente(u_int64_t tamanho);
 
 
@@ -256,12 +264,12 @@ size_t calcula_tamanho_pacote(unsigned char * packet);
 /// @brief Função que analisa o pacote e procura casos em que há 0x81, que é a tag do protocolo VLAN, insere um 0xFF após para evitar o problema
 /// @param packet pacote que será alterado
 /// @return pacote com as análises feitas
-unsigned char * analisa_insere(unsigned char * packet);
+int analisa_insere(unsigned char ** packet);
 
 /// @brief Função que analisa o pacote e procura casos em que há 0x81, que é a tag do protocolo VLAN, retira os 0xFF após para evitar o problema
 /// @param packet pacote que será alterado
 /// @return pacote com as análises feitas
-unsigned char * analisa_retira(unsigned char * packet);
+int analisa_retira(unsigned char ** packet);
 
 /// @brief Conta quantos TPID (0x81) há no arquivo
 /// @param buffer buffer que será analisado
@@ -273,4 +281,54 @@ unsigned int count_TPID(unsigned char * buffer, unsigned int tamanho);
 /// @param nome_arq Nome do arquivo 
 /// @return retorna o checksum do arquivo, retorna 0 se deu erro
 unsigned int realiza_checksum(char * nome_arq);
+
+/// @brief Função que analisa o pacote, retira os bytes extras (protocolo VLAN) verifica se há erros de CRC, se o pacote é do tipo correto e se a sequência está correta
+/// @param packet pacote que será lido
+/// @param tipo tipo do pacote que se espera
+/// @return Retorna o pacote analisado, caso contrário retorna NULL
+int analisa_pacote(unsigned char ** packet, char tipo);
+
+/// @brief Função que espera um pacote do tipo correto usando recuo exponecial
+/// @param socket socket que será usado para receber o pacote
+/// @param tipo tipo esperado do pacote
+/// @return Retorna o pacote recebido
+unsigned char * espera_pacote(int socket, char tipo, int com_timeout);
+
+/// @brief Imprime o erro que está listado no pacote
+/// @param packet pacote que contém o erro
+/// @return void
+void imprime_erro(unsigned char * packet);
+
+
+/// @brief Função que obtém o tamanho de um arquivo
+/// @param nome_arq nome do arquivo
+/// @return tamanho do arquivo, retorna 0 se houver erro
+uint64_t get_tamanho_arquivo(char * nome_arq);
+
+/// @brief Função que verifica se o arquivo existe e se é acessível, caso contrário, imprime "Erro ao obter informações do arquivo nome_arq" e retorna errno
+/// @param nome_arq nome do arquivo
+/// @return 0 se o arquivo existe e é acessível, errno caso contrário
+uint64_t testa_arquivo(char * nome_arq, int socket);
+
+/// @brief Função que cria um pacote e envia, esperando um pacote de resposta
+/// @param tipo_enviado tipo do pacote que será enviado
+/// @param dados os dados que serão enviados
+/// @param tamanho tamanho do campo de dados
+/// @param tipo_esperado tipo do pacote que é esperado
+/// @param socket socket que será usado para enviar e receber pacotes
+/// @return pacote de resposta, retorna NULL se houver erro
+unsigned char * cria_stop_wait(char tipo_enviado, void * dados, int tamanho, char tipo_esperado, int socket);
+
+/// @brief Função que testa se há memória suficiente para alocar a quantidade de bytes dada
+/// @param tamanho tamanho do pacote
+/// @return 1 se houver memória suficiente, 0 caso contrário
+int testa_memoria(uint64_t tamanho, int socket);
+
+
+/// @brief insere as insofrmações em pacote no ultimo pacote recebido
+/// @param pacote ultimo pacote recebido
+void set_ultimo_pacote(unsigned char * pacote);
+
+/// @brief Cria o ultimo pacote recebido
+void cria_ultimo_pacote();
 #endif
