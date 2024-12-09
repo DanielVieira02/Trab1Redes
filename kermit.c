@@ -848,7 +848,7 @@ unsigned char * espera_pacote(int socket, char tipo, int com_timeout) {
 		}
 
         // Se passar na analise ou o NACK pedir o que já foi enviado
-		if(analisa_pacote(&packet, tipo) || (get_tipo_pacote(packet) == NACK && get_sequencia_pacote(packet) == RECEBE)){ break; }
+		if(analisa_pacote(&packet, tipo) || (get_tipo_pacote(packet) == NACK && ((get_sequencia_pacote(packet) < SEQUENCIA_ENVIA) || (get_sequencia_pacote(packet) == 31 && SEQUENCIA_ENVIA == 0)))){ break; }
 
         packet = destroi_pacote(packet); // pacote interpretado como lixo
     }
