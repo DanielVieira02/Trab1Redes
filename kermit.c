@@ -486,6 +486,7 @@ unsigned char divisao_mod_2(unsigned char *dividendo, unsigned int tamanho_divid
 
 int recebe_fluxo_dados(FILE * arquivo, int socket) {
     unsigned char * recebido = NULL, * dados = NULL;
+    uint64_t bytes_totais = 0;
 
     #ifdef DEBUG
         printf("Iniciando o fluxo de dados\n");
@@ -513,6 +514,8 @@ int recebe_fluxo_dados(FILE * arquivo, int socket) {
         free(dados);
 
         // Envia ACK e recebe o próximo pacote
+        bytes_totais += get_tamanho_pacote(recebido);
+        imprime_recebendo(bytes_totais);
         destroi_pacote(recebido);
 
 		do {
@@ -524,6 +527,7 @@ int recebe_fluxo_dados(FILE * arquivo, int socket) {
 		} while(get_tipo_pacote(recebido) != DADOS && get_tipo_pacote(recebido) != FIM_DADOS);
 	}
 
+    printf("\n");
     // como o ultimo pacote é vazio, não é necessário escrever no arquivo
     // manda apenas um ack
     envia_ack(socket);
@@ -535,6 +539,8 @@ int envia_fluxo_dados(FILE * arquivo, uint64_t tamanho, int socket) {
     unsigned char * recebido = NULL, * enviado = NULL, * buffer = NULL;
     uint64_t total_chunks = tamanho / MAX_DADOS; // 63 bytes por pacote
     buffer = calloc(1, MAX_DADOS);
+
+    printf("Progresso: ");
 
     // Envia o pacote de dados
     for(int chunks = 0; chunks < total_chunks; chunks++) {
@@ -565,6 +571,7 @@ int envia_fluxo_dados(FILE * arquivo, uint64_t tamanho, int socket) {
 		// destroi os pacotes
         recebido = destroi_pacote(recebido);
         enviado = destroi_pacote(enviado);
+        imprime_barra_progresso((double)chunks / (double)total_chunks);
     }
 
     // escreve o resto dos dados
@@ -848,7 +855,9 @@ unsigned char * espera_pacote(int socket, char tipo, int com_timeout) {
 		}
 
         // Se passar na analise ou o NACK pedir o que já foi enviado
-		if(analisa_pacote(&packet, tipo) || (get_tipo_pacote(packet) == NACK && ((get_sequencia_pacote(packet) < SEQUENCIA_ENVIA) || (get_sequencia_pacote(packet) == 31 && SEQUENCIA_ENVIA == 0)))){ break; }
+		if(analisa_pacote(&packet, tipo) || (get_tipo_pacote(packet) == NACK && ((get_sequencia_pacote(packet) < SEQUENCIA_ENVIA) || (get_sequencia_pacote(packet) == 31 && SEQUENCIA_ENVIA == 0)))){ 
+            break; 
+        }
 
         packet = destroi_pacote(packet); // pacote interpretado como lixo
     }

@@ -1,7 +1,5 @@
 #ifndef KERMIT_H
 #define KERMIT_H
-#include "kermit_structs.h"
-
 #define _POSIX_C_SOURCE 200809L // para usar a função strdup
 #include <stdio.h>
 #include <stdlib.h>
@@ -25,6 +23,10 @@
 #include <errno.h>
 #include <sys/time.h>
 #include <sys/stat.h>
+
+#include "front.h"
+#include "kermit_structs.h"
+
 #define _FILE_OFFSET_BITS 64
 
 #define MARCADOR_INICIO 0b01111110
@@ -331,4 +333,5 @@ void set_ultimo_pacote(unsigned char * pacote);
 
 /// @brief Cria o ultimo pacote recebido
 void cria_ultimo_pacote();
+
 #endif

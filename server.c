@@ -147,6 +147,7 @@ void trata_pacote(unsigned char * packet, int socket) {
         break;
     default:
         fprintf(stderr, "trata_pacote: requisição não é do tipo esperado.\n");
+        envia_nack(socket);
         break;
 
         if(nome_arquivo) free(nome_arquivo);

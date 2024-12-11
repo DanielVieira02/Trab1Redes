@@ -224,7 +224,7 @@ int client(int socket) {
                 if(!backup_client(arquivo, buffer, socket)){
                     fprintf(stderr, "Erro ao realizar o backup\n");
                 } else {
-                    printf("Backup realizado com sucesso\n");
+                    printf("\nBackup de %s realizado com sucesso\n\n\n", buffer);
                 }
 
                 fclose(arquivo);
@@ -233,7 +233,7 @@ int client(int socket) {
                 if(!restaura_client(buffer, socket)){
                     fprintf(stderr, "Erro ao realizar a restauração\n");
                 } else {
-                    printf("Restauração realizada com sucesso\n");
+                    printf("Restauração de %s realizada com sucesso\n\n\n", buffer);
                 }
                 // printf("TODO Restaura, mano\n");
                 break;
